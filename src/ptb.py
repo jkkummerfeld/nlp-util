@@ -139,6 +139,15 @@ class PTB_Tree:
 		right = left
 		for i in xrange(pos + 1, len(text)):
 			char = text[i]
+			# we've reached the end of the category that is the root of this subtree
+			if depth == 0 and char in ' (' and self.label == '':
+				self.label = text[pos + 1:i]
+				if '|' in self.label:
+					if 'ADVP' in self.label:
+						self.label = 'ADVP'
+					else:
+						self.label = self.label.split('|')[0]
+
 			# update the depth
 			if char == '(':
 				depth += 1
@@ -160,14 +169,6 @@ class PTB_Tree:
 					self.word = text[pos + 1:i]
 					self.span = (left, left + 1)
 			
-			# we've reached the end of the category that is the root of this subtree
-			if depth == 0 and char == ' ' and self.label == '':
-				self.label = text[pos + 1:i]
-				if '|' in self.label:
-					if 'ADVP' in self.label:
-						self.label = 'ADVP'
-					else:
-						self.label = self.label.split('|')[0]
 			# we've reached the end of the scope for this bracket
 			if depth < 0:
 				break
@@ -555,7 +556,7 @@ def apply_collins_rules(tree, left=0):
 	ans.label = ans.label.split('=')[0]
 	return ans
 
-def read_tree(source, return_empty=False, ptb_in=True):
+def read_tree(source, return_empty=False, input_format='ptb'):
 	'''Read a single tree from the given file.
 	
 	>>> from StringIO import StringIO
@@ -572,7 +573,7 @@ def read_tree(source, return_empty=False, ptb_in=True):
 	>>> print tree
 	(ROOT (S (NP-SBJ (NNP Scotty)) (VP (VBD did) (RB not) (VP (VB go) (ADVP (RB back)) (PP (TO to) (NP (NN school))))) (. .)))'''
 	cur_text = []
-	depth = 0 if ptb_in else -1
+	depth = 0 if input_format == 'ptb' else -1
 	while True:
 		line = source.readline()
 		# Check if we are out of input
@@ -582,7 +583,7 @@ def read_tree(source, return_empty=False, ptb_in=True):
 		line = line.strip()
 		if line == '':
 			# Check for OntoNotes style input
-			if depth < 0 and not ptb_in:
+			if input_format == 'ontonotes':
 				text = ''
 				for line in cur_text:
 					if len(line) == 0 or line[0] == '#':
@@ -592,13 +593,13 @@ def read_tree(source, return_empty=False, ptb_in=True):
 					pos = line[4]
 					tree = line[5]
 					tree = tree.split('*')
-					text += ' %s(%s %s)%s' % (tree[0], pos, word, tree[1])
+					text += '%s(%s %s)%s' % (tree[0], pos, word, tree[1])
 				text = ' '.join(text.split('_')).strip()
 				tree = PTB_Tree()
 				tree.set_by_text(text)
 				tree.label = 'ROOT'
 				return tree
-			if return_empty:
+			elif return_empty:
 				return "Empty"
 			continue
 		cur_text.append(line)
@@ -624,7 +625,7 @@ def read_tree(source, return_empty=False, ptb_in=True):
 			return tree
 	return None
 
-def generate_trees(source, max_sents=-1, return_empty=False, ptb_in=True):
+def generate_trees(source, max_sents=-1, return_empty=False, input_format='ptb'):
 	'''Read trees from the given file (opening the file if only a string is given).
 
 	This version is a generator, yielding one tree at a time.
@@ -654,7 +655,7 @@ def generate_trees(source, max_sents=-1, return_empty=False, ptb_in=True):
 		source = open(source)
 	count = 0
 	while True:
-		tree = read_tree(source, return_empty, ptb_in)
+		tree = read_tree(source, return_empty, input_format)
 		if tree == "Empty":
 			yield None
 			continue
@@ -665,8 +666,8 @@ def generate_trees(source, max_sents=-1, return_empty=False, ptb_in=True):
 		if count >= max_sents > 0:
 			break
 
-def read_trees(source, max_sents=-1):
-	return [tree for tree in generate_trees(source, max_sents)]
+def read_trees(source, max_sents=-1, return_empty=False, input_format='ptb'):
+	return [tree for tree in generate_trees(source, max_sents, return_empty, input_format)]
 
 def counts_for_prf(test, gold):
 	test_spans = [span for span in test.span_list() if span[2].word is None]

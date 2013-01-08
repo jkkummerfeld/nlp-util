@@ -65,12 +65,14 @@ def collins_NP(tree, head_map):
 ###	(NP the man 's telescope)). These are recovered as a post-processing stage 
 ###	after parsing. The following rules are then used to recover the NP head:
 
+	#TODO:todo handle NML properly
+
 	if get_head(head_map, tree.subtrees[-1])[2] == 'POS':
 		add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
 		return
 	if last_search(tree, set(['NN', 'NNP', 'NNPS', 'NNS', 'NX', 'POS', 'JJR']), head_map):
 		return
-	if first_search(tree, set(['NP']), head_map):
+	if first_search(tree, set(['NP', 'NML']), head_map):
 		return
 	if last_search(tree, set(['$', 'ADJP', 'PRN']), head_map):
 		return
@@ -95,7 +97,7 @@ def collins_find_heads(tree, head_map=None):
 	# If the label for this node is not in the table we are either at the bottom,
 	# at an NP, or have an error
 	if tree.label not in collins_mapping_table:
-		if tree.label == 'NP':
+		if tree.label in ['NP', 'NML']:
 			collins_NP(tree, head_map)
 			return head_map
 		elif tree.label == 'ROOT':
