@@ -660,11 +660,11 @@ def generate_trees(source, max_sents=-1, return_empty=False, input_format='ptb')
 			yield None
 			continue
 		if tree is None:
-			break
+			return
 		yield tree
 		count += 1
 		if count >= max_sents > 0:
-			break
+			return
 
 def read_trees(source, max_sents=-1, return_empty=False, input_format='ptb'):
 	return [tree for tree in generate_trees(source, max_sents, return_empty, input_format)]
