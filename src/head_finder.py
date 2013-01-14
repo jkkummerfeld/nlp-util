@@ -99,12 +99,12 @@ def collins_find_heads(tree, head_map=None):
 	if tree.label not in collins_mapping_table:
 		if tree.label in ['NP', 'NML']:
 			collins_NP(tree, head_map)
-			return head_map
-		elif tree.label == 'ROOT':
-			add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
-			return head_map
 		else:
-			raise Exception("Unknown Label: %s" % tree.label)
+			# TODO: Consider alternative error announcement means
+			if tree.label != 'ROOT':
+				print >> sys.stderr, "Unknown Label: %s" % tree.label
+			add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
+		return head_map
 	
 	# Look through and take the first/last occurrence that matches
 	info = collins_mapping_table[tree.label]

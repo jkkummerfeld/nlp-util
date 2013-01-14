@@ -92,9 +92,8 @@ def read_conll_doc(filename, ans=None, rtext=True, rparses=True, rheads=True, rc
 						info.append(read_conll_text(cur))
 					if rparses:
 						info.append(read_conll_parses(cur))
-###						TODO: catch exceptions (or don't raise them) for unknown tags
-###						if rheads:
-###							info.append([head_finder.collins_find_heads(parse) for parse in info[-1]])
+						if rheads:
+							info.append([head_finder.collins_find_heads(parse) for parse in info[-1]])
 					if rclusters:
 						info.append(read_conll_coref(cur))
 					ans[keys[0]][keys[1]] = tuple(info)
