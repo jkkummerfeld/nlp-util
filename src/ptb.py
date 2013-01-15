@@ -472,7 +472,7 @@ def remove_function_tags(tree):
 	ans = PTB_Tree()
 	ans.word = tree.word
 	ans.label = tree.label
-	if not ans.label[0] == '-':
+	if len(ans.label) > 0 and ans.label[0] != '-':
 		ans.label = ans.label.split('-')[0]
 	ans.label = ans.label.split('=')[0]
 	ans.span = (tree.span[0], tree.span[1])
