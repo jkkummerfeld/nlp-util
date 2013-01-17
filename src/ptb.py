@@ -189,6 +189,12 @@ class PTB_Tree:
 			ans.subtrees[-1].parent = ans
 		return ans
 
+	def get_root(self):
+		if self.parent is not None:
+			return self.parent.get_root()
+		else:
+			return self
+
 	def production_list(self, ans=None):
 		if ans is None:
 			ans = []

@@ -29,7 +29,8 @@ collins_mapping_table = {
   'WHPP': ('left', ['IN', 'TO', 'FW']),
   # Added by me:
   'NX': ('right', ['NN', 'NNS', 'NNP', 'NNPS', 'NP', 'NAC', 'EX', '$', 'CD', 'QP', 'PRP', 'VBG', 'JJ', 'JJS', 'JJR', 'ADJP', 'FW']),
-  'X': ('right', ['NN', 'NNS', 'NNP', 'NNPS', 'NP', 'NAC', 'EX', '$', 'CD', 'QP', 'PRP', 'VBG', 'JJ', 'JJS', 'JJR', 'ADJP', 'FW'])
+  'X': ('right', ['NN', 'NNS', 'NNP', 'NNPS', 'NP', 'NAC', 'EX', '$', 'CD', 'QP', 'PRP', 'VBG', 'JJ', 'JJS', 'JJR', 'ADJP', 'FW']),
+  'META': ('right', [])
 }
 
 def add_head(head_map, tree, head):
@@ -103,6 +104,7 @@ def collins_find_heads(tree, head_map=None):
 			# TODO: Consider alternative error announcement means
 			if tree.label != 'ROOT':
 				print >> sys.stderr, "Unknown Label: %s" % tree.label
+				print >> sys.stderr, "In tree:", tree.get_root()
 			add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
 		return head_map
 	
