@@ -558,7 +558,7 @@ def apply_collins_rules(tree, left=0):
 		if not ans.label[0] == '-':
 			ans.label = ans.label.split('-')[0]
 	except:
-		print >> sys.stderr, "Collins rule application issue:", tree
+		raise Exception("Collins rule application issue:" + str(tree.get_root()))
 	ans.label = ans.label.split('=')[0]
 	return ans
 
