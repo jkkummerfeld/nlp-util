@@ -3,10 +3,6 @@
 import sys
 from collections import defaultdict
 
-class keyed_defaultdict(dict):
-	def __missing__(self, key):
-		return set([key])
-
 def set_of_clusters(clusters):
 	ans = set()
 	for cluster in clusters:
@@ -59,15 +55,7 @@ def confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters,
 							stack.append((gold_cluster, True))
 					mentions.discard(mention)
 		groups.append(group)
-
-	unique_sets = set()
-	for group in groups:
-		unique_sets.add(tuple(group['clusters']['auto']))
-	unique_sets = [(len(uset), list(uset)) for uset in unique_sets]
-	unique_sets.sort(reverse=True)
-	unique_sets = [uset[1] for uset in unique_sets]
-
-	return unique_sets, groups
+	return groups
 
 if __name__ == '__main__':
 	print "Running doctest"

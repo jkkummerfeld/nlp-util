@@ -363,14 +363,29 @@ if __name__ == '__main__':
 			auto_cluster_set = coreference.set_of_clusters(auto_clusters)
 			gold_mention_set = coreference.set_of_mentions(gold_clusters)
 			auto_mention_set = coreference.set_of_mentions(auto_clusters)
-
-			unique_sets, groups = coreference.confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters, gold_mention_set, auto_mention_set)
 			
 			# Coloured mention output
 			print_mention_list(out_mention_list, gold_mentions, auto_mentions)
 			print_mention_text(out_mention_text, gold_mentions, auto_mentions, gold_parses, gold_heads, text)
 
 			# Coloured cluster output, grouped
+			groups = coreference.confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters, gold_mention_set, auto_mention_set)
+			unique_sets = set()
+			for group in groups:
+				all_spurious = True
+				for cluster in group['clusters']['auto']:
+					for mention in auto_clusters[cluster]:
+						if mention in gold_mentions:
+							all_spurious = False
+							break
+					if not all_spurious:
+						break
+				if not all_spurious:
+					unique_sets.add(tuple(group['clusters']['auto']))
+			unique_sets = [(len(uset), list(uset)) for uset in unique_sets]
+			unique_sets.sort(reverse=True)
+			unique_sets = [uset[1] for uset in unique_sets]
+
 			covered = print_cluster_errors(out_cluster_errors, out_cluster_context, text, gold_parses, gold_heads, unique_sets, auto_clusters)
 			print_cluster_missing(out_cluster_errors, out_cluster_context, out_cluster_missing, text, gold_cluster_set, covered, gold_parses, gold_heads)
 			print_cluster_extra(out_cluster_errors, out_cluster_context, out_cluster_extra, text, auto_cluster_set, covered, gold_parses, gold_heads)
