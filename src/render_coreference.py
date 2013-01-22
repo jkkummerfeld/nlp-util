@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
 import sys
-import ptb, render_tree, conll_coref, head_finder, coreference
+import ptb, render_tree, conll_coref, head_finder, coreference, init
 
 from collections import defaultdict
 
 CONTEXT = 40
+ANSI_WHITE=15
+ANSI_RED=1
+ANSI_YELLOW=3
 
 def mention_text(text, mention, parses=None, heads=None, colour=None):
 	sentence, start, end = mention
@@ -74,7 +77,7 @@ def print_headless_mentions(out, parses, heads, mentions):
 				print >> out, mention_text(text, mention)
 				print >> out, render_tree.text_tree(parses[sentence], False)
 
-def print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, colour=3, extra=False):
+def print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, colour=ANSI_YELLOW, extra=False):
 	print >> out_errors, str(mention),
 	pre_context, post_context = mention_context(text, mention)
 	print >> out_context, ' ' * (CONTEXT - len(pre_context)), pre_context,
@@ -129,7 +132,7 @@ def print_cluster_errors(out_errors, out_context, text, gold_parses, gold_heads,
 					print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, extra=True)
 					covered.add(mention)
 				else:
-					print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention)
+					print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, colour=ANSI_WHITE)
 					covered.add(mention)
 					if gold_mentions[mention] not in colour_map:
 						colour_map[gold_mentions[mention]] = '3'
@@ -162,7 +165,10 @@ def print_cluster_errors(out_errors, out_context, text, gold_parses, gold_heads,
 						first = False
 						print >> out_errors, "Missing:"
 						print >> out_context, "Missing:"
-					print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, colour_map[num])
+					if single_auto and single_gold:
+						print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, ANSI_WHITE)
+					else:
+						print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, colour_map[num])
 					covered.add(mention)
 		if not first:
 			print >> out_errors
@@ -182,7 +188,7 @@ def print_cluster_missing(out_errors, out_context, out, text, gold_cluster_set, 
 			if mention not in covered:
 				print >> out, str(mention) + '\t',
 				print >> out, mention_text(text, mention, gold_parses, gold_heads)
-				print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention)
+				print_mention(out_errors, out_context, gold_parses, gold_heads, text, mention, ANSI_WHITE)
 				printed += 1
 		if printed > 0 and len(entity) != printed:
 			print >> sys.stderr, "Covered isn't being filled correctly", printed, len(entity)
@@ -321,10 +327,7 @@ def print_mention_text(out, gold_mentions, auto_mentions, gold_parses, gold_head
 		sentence += 1
 
 if __name__ == '__main__':
-	if len(sys.argv) != 4:
-		print "Print coreference resolution errors"
-		print "   %s <prefix> <gold_dir> <test>" % sys.argv[0]
-		sys.exit(0)
+	init.argcheck(sys.argv, 4, 4, "Print coreference resolution errors", "<prefix> <gold_dir> <test>")
 
 	auto = conll_coref.read_coref_system_output(sys.argv[3])
 	gold = conll_coref.read_matching_files(auto, sys.argv[2])
@@ -342,6 +345,7 @@ if __name__ == '__main__':
 	             out_cluster_extra,
 	             out_mention_list, 
 	             out_mention_text]
+	init.header(sys.argv, out_files)
 
 	for doc in auto:
 		for part in auto[doc]:
@@ -459,3 +463,9 @@ if __name__ == '__main__':
 				if missed == len(cluster):
 					# Completely missed
 					print >> out_stats, 'confusion', 0, 1
+
+if __name__ == "__main__":
+	print "Running doctest"
+	import doctest
+	doctest.testmod()
+
