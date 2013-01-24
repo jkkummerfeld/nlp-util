@@ -129,8 +129,9 @@ def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gol
 			covered.update(cluster)
 	return covered
 
-def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_mentions, auto_mentions,  with_context=False):
-	colour_map = {}
+def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_mentions, auto_mentions,  with_context=False, colour_map=None):
+	if colour_map is None:
+		colour_map = {}
 	next_colour = 3
 	# Check if all in the same gold entity
 	auto_count = len(group['auto'])
@@ -161,7 +162,7 @@ def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_me
 					print_mention(out, with_context, gold_parses, gold_heads, text, mention, extra=True)
 				else:
 					print_mention(out, with_context, gold_parses, gold_heads, text, mention)
-					colour_map[gold_mentions[mention]] = next_colour
+					colour_map[gold_mentions[mention]] = ANSI_WHITE
 	else:
 		sorted_clusters = [(min(c), c) for c in group['auto']]
 		sorted_clusters.sort()
@@ -198,6 +199,7 @@ def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_me
 						print_mention(out, with_context, gold_parses, gold_heads, text, mention)
 					else:
 						print_mention(out, with_context, gold_parses, gold_heads, text, mention, colour_map[gold_mentions[mention]])
+	return colour_map
 
 def print_cluster_missing(out_errors, out_context, out, text, gold_cluster_set, covered, gold_parses, gold_heads):
 	print >> out_errors, "Missing:"
