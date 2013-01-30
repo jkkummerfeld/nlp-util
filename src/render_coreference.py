@@ -7,6 +7,7 @@ from collections import defaultdict
 
 CONTEXT = 40
 ANSI_WHITE = 15
+ANSI_YELLOW = 3
 ANSI_RED = 1
 
 def mention_text(text, mention, parses=None, heads=None, colour=None):
@@ -76,10 +77,15 @@ def print_headless_mentions(out, parses, heads, mentions):
 				print >> out, mention_text(text, mention)
 				print >> out, render_tree.text_tree(parses[sentence], False)
 
-def print_mention(out, with_context, gold_parses, gold_heads, text, mention, colour=ANSI_WHITE, extra=False):
+def print_mention(out, with_context, gold_parses, gold_heads, text, mention, colour=None, extra=False):
 	pre_context, post_context = mention_context(text, mention)
 	if extra:
 		colour = ANSI_RED
+	if colour is None:
+		if with_context:
+			colour = ANSI_YELLOW
+		else:
+			colour = ANSI_WHITE
 	mtext = mention_text(text, mention, gold_parses, gold_heads, "\033[38;5;%dm" % colour)
 
 	if with_context:
