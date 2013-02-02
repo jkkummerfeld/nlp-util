@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-import sys
+import sys, os
 import ptb, head_finder, render_tree
 from collections import defaultdict
 from StringIO import StringIO
 import re
-import glob
+import glob, fnmatch
 
 def read_parses(lines):
 	in_file = StringIO(''.join(lines))
@@ -29,8 +29,8 @@ def read_coref(lines):
 	#  - Each mention has a unique span
 	#  - No crossing mentions (where s1 < s2 < e1 < e2)
 	regex = "([(][0-9]*[)])|([(][0-9]*)|([0-9]*[)])"
-	mentions = {} # (start, end+1) -> ID
-	clusters = defaultdict(lambda: []) # ID -> list of (start, end+1)s
+	mentions = {} # (sentence, start, end+1) -> ID
+	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
 	unmatched_mentions = defaultdict(lambda: [])
 
 	sentence = 0
@@ -110,13 +110,41 @@ def read_matching_files(conll_docs, dir_prefix):
 	# Read the corresponding file under dir_prefix
 	ans = None
 	for filename in conll_docs:
-		query = dir_prefix + '/' + filename + '*gold*conll'
+		query = os.path.join(dir_prefix, filename + '*gold*conll')
 		filenames = glob.glob(query)
 		if len(filenames) == 1:
 			ans = read_doc(filenames[0], ans)
 		else:
 			print "Reading matching doc failed for %s/%s as %d files were found." % (dir_prefix, filename, len(filenames))
 	return ans
+
+def read_all(dir_prefix, suffix="auto_conll"):
+	ans = None
+	for root, dirnames, filenames in os.walk(dir_prefix):
+		for filename in fnmatch.filter(filenames, '*' + suffix):
+			ans = read_doc(os.path.join(root, filename), ans)
+	return ans
+
+def read_cherrypicker_doc(filename):
+	regex = '(<COREF [^>]*>)|(</COREF> *)|([^<]* *)'
+	mentions = {} # (start, end+1) -> ID
+	clusters = defaultdict(lambda: []) # ID -> list of (start, end+1)s
+	unmatched_mentions = []
+	sentence = 0
+	for line in open(filename):
+		word = 0
+		for coref_start, coref_end, token in re.findall(regex, line.strip()):
+			if token != '':
+				word += 1
+			elif coref_start != '':
+				cluster = int(coref_start.split('ID="')[1].split('"')[0])
+				unmatched_mentions.append((cluster, word))
+			elif coref_end != '':
+				cluster, start = unmatched_mentions.pop()
+				mentions[sentence, start, word] = cluster
+				clusters[cluster].append((sentence, start, word))
+		sentence += 1
+	return {'clusters': clusters, 'mentions': mentions}
 
 if __name__ == "__main__":
 	print "Running doctest"

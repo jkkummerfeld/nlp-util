@@ -96,7 +96,7 @@ def print_mention(out, with_context, gold_parses, gold_heads, text, mention, col
 			print >> out, "Extra: ",
 		print >> out, mtext
 
-def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions, auto_mentions):
+def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions):
 	mixed_groups = []
 	for i in xrange(len(groups)):
 		group = groups[i]
@@ -121,8 +121,8 @@ def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gol
 	mixed_groups = [groups[gset[-1]] for gset in mixed_groups]
 	covered = set()
 	for group in mixed_groups:
-		print_cluster_error_group(group, out_errors, text, gold_parses, gold_heads, gold_mentions, auto_mentions)
-		print_cluster_error_group(group, out_context, text, gold_parses, gold_heads, gold_mentions, auto_mentions, True)
+		print_cluster_error_group(group, out_errors, text, gold_parses, gold_heads, gold_mentions)
+		print_cluster_error_group(group, out_context, text, gold_parses, gold_heads, gold_mentions, True)
 		print >> out_errors
 		print >> out_context
 		print >> out_errors, '-' * 60
@@ -135,7 +135,7 @@ def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gol
 			covered.update(cluster)
 	return covered
 
-def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_mentions, auto_mentions,  with_context=False, colour_map=None):
+def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_mentions, with_context=False, colour_map=None):
 	if colour_map is None:
 		colour_map = {}
 	next_colour = 3
@@ -148,10 +148,10 @@ def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_me
 	all_auto = set()
 	for cluster in group['auto']:
 		all_auto.update(cluster)
-	no_spurious = len(all_auto.difference(all_gold)) == 0
-	no_missing = len(all_gold.difference(all_auto)) == 0
+	spurious = all_auto.difference(all_gold)
+	missing = all_gold.difference(all_auto)
 
-	if auto_count == 1 and gold_count == 1 and no_spurious and no_missing:
+	if auto_count == 1 and gold_count == 1 and len(spurious) == 0 and len(missing) == 0:
 		# Perfect match
 		for cluster in group['auto']:
 			sorted_cluster = list(cluster)
@@ -193,14 +193,14 @@ def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_me
 					colour = colour_map[gold_mentions[mention]]
 					print_mention(out, with_context, gold_parses, gold_heads, text, mention, colour)
 
-	if not no_missing:
+	if len(missing) > 0:
 		print >> out
 		print >> out, "Missing:"
 		for cluster in group['gold']:
 			sorted_cluster = list(cluster)
 			sorted_cluster.sort()
 			for mention in sorted_cluster:
-				if mention not in auto_mentions:
+				if mention in missing:
 					if auto_count <= 1 and gold_count == 1:
 						print_mention(out, with_context, gold_parses, gold_heads, text, mention)
 					else:
@@ -247,30 +247,30 @@ def print_cluster_extra(out_errors, out_context, out, text, auto_cluster_set, co
 	print >> out_errors
 	print >> out_context
 
-def print_mention_list(out, gold_mentions, auto_mentions):
+def print_mention_list(out, gold_mentions, auto_mention_set):
 	mentions = [(m, True) for m in gold_mentions]
-	for mention in auto_mentions:
+	for mention in auto_mention_set:
 		if mention not in gold_mentions:
 			mentions.append((mention, False))
 	mentions.sort()
 	for mention in mentions:
 		if not mention[1]:
 			print_mention(out, False, gold_parses, gold_heads, text, mention[0], extra=True)
-		elif mention[0] not in auto_mentions:
+		elif mention[0] not in auto_mention_set:
 			print_mention(out, False, gold_parses, gold_heads, text, mention[0], colour=4)
 		else:
 			print_mention(out, False, gold_parses, gold_heads, text, mention[0])
 
-def print_mention_text(out, gold_mentions, auto_mentions, gold_parses, gold_heads, text, ):
+def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_heads, text):
 	mentions_by_sentence = defaultdict(lambda: [[], []])
 	for mention in gold_mentions:
 		mentions_by_sentence[mention[0]][0].append(mention)
-	for mention in auto_mentions:
+	for mention in auto_mention_set:
 		mentions_by_sentence[mention[0]][1].append(mention)
 	
 	word_colours = {}
 	for mention in gold_mentions:
-		if mention in auto_mentions:
+		if mention in auto_mention_set:
 			continue
 		for i in xrange(mention[1], mention[2]):
 			word_colours[mention[0], i] = [True, False, False]
@@ -278,7 +278,7 @@ def print_mention_text(out, gold_mentions, auto_mentions, gold_parses, gold_head
 		if node is not None:
 			head = head_finder.get_head(gold_heads[mention[0]], node)
 			word_colours[mention[0], head[0][0]][2] = True
-	for mention in auto_mentions:
+	for mention in auto_mention_set:
 		if mention in gold_mentions:
 			continue
 		for i in xrange(mention[1], mention[2]):
@@ -330,7 +330,7 @@ def print_mention_text(out, gold_mentions, auto_mentions, gold_parses, gold_head
 				continue
 			done.update(subset)
 			for mention in subset:
-				if mention in auto_mentions:
+				if mention in auto_mention_set:
 					print >> out, '\t', mention_text(text, mention, gold_parses, gold_heads)
 				else:
 					print >> out, '\t', mention_text(text, mention, gold_parses, gold_heads, "\033[38;5;4m")
@@ -400,59 +400,59 @@ if __name__ == '__main__':
 			auto_mention_set = coreference.set_of_mentions(auto_clusters)
 			
 			# Coloured mention output
-			print_mention_list(out_mention_list, gold_mentions, auto_mentions)
-			print_mention_text(out_mention_text, gold_mentions, auto_mentions, gold_parses, gold_heads, text)
+			print_mention_list(out_mention_list, gold_mentions, auto_mention_set)
+			print_mention_text(out_mention_text, gold_mentions, auto_mention_set, gold_parses, gold_heads, text)
 
 			# Coloured cluster output, grouped
 			groups = coreference.confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters)
 
-			covered = print_cluster_errors(groups, out_cluster_errors, out_cluster_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions, auto_mentions)
+			covered = print_cluster_errors(groups, out_cluster_errors, out_cluster_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions)
 			print_cluster_missing(out_cluster_errors, out_cluster_context, out_cluster_missing, text, gold_cluster_set, covered, gold_parses, gold_heads)
 			print_cluster_extra(out_cluster_errors, out_cluster_context, out_cluster_extra, text, auto_cluster_set, covered, gold_parses, gold_heads)
 			
-			# Stats
-			for cluster_num in auto_clusters:
-				cluster = auto_clusters[cluster_num]
-				extra = 0
-				options = defaultdict(lambda: 0)
-				for mention in cluster:
-					if mention not in gold_mention_set:
-						extra += 1
-					else:
-						options[gold_mentions[mention]] += 1
-				best_score = None
-				for option in options:
-					others = len(cluster) - options[option]
-					missing = len(gold_clusters[option]) - options[option]
-					score = others + missing + extra
-					if best_score is None or score < best_score[0]:
-						best_score = (score, others, missing, extra)
-				if best_score is None:
-					# All extra
-					print >> out_stats, 'auto', len(cluster), -1, 0, 0, extra
-				else:
-					print >> out_stats, 'auto', len(cluster), ' '.join([str(val) for val in best_score])
-			for cluster_num in gold_clusters:
-				cluster = gold_clusters[cluster_num]
-				missed = 0
-				options = defaultdict(lambda: 0)
-				for mention in cluster:
-					if mention not in auto_mention_set:
-						missed += 1
-					else:
-						options[auto_mentions[mention]] += 1
-				best_score = None
-				for option in options:
-					others = len(cluster) - options[option]
-					elsewhere = len(auto_clusters[option]) - options[option]
-					score = others + elsewhere + missed
-					if best_score is None or score < best_score[0]:
-						best_score = (score, others, elsewhere, missed)
-				if best_score is None:
-					# Completely missed
-					print >> out_stats, 'gold', len(cluster), -1, 0, 0, extra
-				else:
-					print >> out_stats, 'gold', len(cluster), ' '.join([str(val) for val in best_score])
+###			# Stats
+###			for cluster_num in auto_clusters:
+###				cluster = auto_clusters[cluster_num]
+###				extra = 0
+###				options = defaultdict(lambda: 0)
+###				for mention in cluster:
+###					if mention not in gold_mention_set:
+###						extra += 1
+###					else:
+###						options[gold_mentions[mention]] += 1
+###				best_score = None
+###				for option in options:
+###					others = len(cluster) - options[option]
+###					missing = len(gold_clusters[option]) - options[option]
+###					score = others + missing + extra
+###					if best_score is None or score < best_score[0]:
+###						best_score = (score, others, missing, extra)
+###				if best_score is None:
+###					# All extra
+###					print >> out_stats, 'auto', len(cluster), -1, 0, 0, extra
+###				else:
+###					print >> out_stats, 'auto', len(cluster), ' '.join([str(val) for val in best_score])
+###			for cluster_num in gold_clusters:
+###				cluster = gold_clusters[cluster_num]
+###				missed = 0
+###				options = defaultdict(lambda: 0)
+###				for mention in cluster:
+###					if mention not in auto_mention_set:
+###						missed += 1
+###					else:
+###						options[auto_mentions[mention]] += 1
+###				best_score = None
+###				for option in options:
+###					others = len(cluster) - options[option]
+###					elsewhere = len(auto_clusters[option]) - options[option]
+###					score = others + elsewhere + missed
+###					if best_score is None or score < best_score[0]:
+###						best_score = (score, others, elsewhere, missed)
+###				if best_score is None:
+###					# Completely missed
+###					print >> out_stats, 'gold', len(cluster), -1, 0, 0, extra
+###				else:
+###					print >> out_stats, 'gold', len(cluster), ' '.join([str(val) for val in best_score])
 
 ###			for uset in unique_sets:
 ###				gold_ids = set()
