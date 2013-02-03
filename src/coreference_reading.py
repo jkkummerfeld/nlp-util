@@ -127,8 +127,8 @@ def read_all(dir_prefix, suffix="auto_conll"):
 
 def read_cherrypicker_doc(filename):
 	regex = '(<COREF [^>]*>)|(</COREF> *)|([^<]* *)'
-	mentions = {} # (start, end+1) -> ID
-	clusters = defaultdict(lambda: []) # ID -> list of (start, end+1)s
+	mentions = {} # (sentence, start, end+1) -> ID
+	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
 	unmatched_mentions = []
 	sentence = 0
 	for line in open(filename):
@@ -145,6 +145,32 @@ def read_cherrypicker_doc(filename):
 				clusters[cluster].append((sentence, start, word))
 		sentence += 1
 	return {'clusters': clusters, 'mentions': mentions}
+
+def read_bart_doc(filename):
+	regex = '(<[^>]*>)|([^<]* *)'
+	mentions = {} # (sentence, start, end+1) -> ID
+	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
+	unmatched_mentions = []
+	sentence = 0
+	word = 0
+	for line in open(filename):
+		for tag, token in re.findall(regex, line.strip()):
+			if token != '':
+				word += 1
+			elif tag == '</s>':
+				word = 0
+				sentence += 1
+			elif '<coref' in tag:
+				cluster = int(tag.split('set_')[1].split('"')[0])
+				unmatched_mentions.append((cluster, word))
+			elif tag == '</coref>':
+				cluster, start = unmatched_mentions.pop()
+				mentions[sentence, start, word] = cluster
+				clusters[cluster].append((sentence, start, word))
+		sentence += 1
+	return {'clusters': clusters, 'mentions': mentions}
+
+# IMS produces standard CoNLL output
 
 if __name__ == "__main__":
 	print "Running doctest"
