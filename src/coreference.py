@@ -94,8 +94,6 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 	# Apply mapping to create new auto_mention_set
 	changed = set()
 	for mention in mapping:
-		print mention_text(mention, text)
-		print mention_text(mapping[mention], text)
 		auto_mention_set.remove(mention)
 		auto_mention_set.add(mapping[mention])
 		cluster_id = auto_mentions.pop(mention)
