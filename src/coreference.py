@@ -2,6 +2,7 @@
 
 import sys
 from collections import defaultdict
+import string
 
 import head_finder
 
@@ -21,12 +22,17 @@ def mention_head(mention, text, parses, heads, default_last=True):
 
 def mention_type(mention, text, parses, heads):
 	head_span, head_word, head_pos = mention_head(mention, text, parses, heads)
-	if head_pos in ["PRP", "PRP$", "WP", "WP$", "WDT", "WRB"] or head_word.lower() == 'i':
+	if mention[2] - mention[1] == 1 and (head_pos in ["PRP", "PRP$", "WP", "WP$", "WDT", "WRB"] or head_word.lower() in pronouns):
 		return "pronoun"
 	elif head_pos in ["NNP", "NNPS"]:
 		return "name"
 	else:
 		return 'nominal'
+
+def mention_text(mention, text):
+	sentence, start, end = mention
+	ans = text[sentence][start:end]
+	return ' '.join(ans)
 
 def set_of_clusters(clusters):
 	ans = set()
@@ -62,10 +68,34 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 	for head in head_dict:
 		if len(head_dict[head]['gold']) == 1 and len(head_dict[head]['auto']) == 1:
 			mapping[head_dict[head]['auto'][0]] = head_dict[head]['gold'][0]
+	
+	# Add mapping for cases where the difference is only leading or trailing punctuation
+	for amention in auto_mention_set.difference(gold_mention_set):
+		if amention in mapping:
+			continue
+		sentence, astart, aend = amention
+		while len(text[sentence][astart]) == 1 and text[sentence][astart] not in string.letters:
+			astart += 1
+		while len(text[sentence][aend-1]) == 1 and text[sentence][aend-1] not in string.letters:
+			aend -= 1
+		for gmention in gold_mention_set.difference(auto_mention_set):
+			gsentence, gstart, gend = gmention
+			if sentence != gsentence:
+				continue
+			while len(text[sentence][gstart]) == 1 and text[sentence][gstart] not in string.letters:
+				gstart += 1
+			while len(text[sentence][gend-1]) == 1 and text[sentence][gend-1] not in string.letters:
+				gend -= 1
+			if astart == gstart and aend == gend:
+				mapping[amention] = gmention
+
+	# TODO: Consider cases where the mention is not a constituent
 
 	# Apply mapping to create new auto_mention_set
 	changed = set()
 	for mention in mapping:
+		print mention_text(mention, text)
+		print mention_text(mapping[mention], text)
 		auto_mention_set.remove(mention)
 		auto_mention_set.add(mapping[mention])
 		cluster_id = auto_mentions.pop(mention)
@@ -128,8 +158,8 @@ PRO_MALE = 2
 PRO_NEUTER = 3
 
 pronouns = {
-	"'s": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
-	"s": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
+###	"'s": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
+###	"s": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
 	"that": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
 	"whatever": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
 	"who": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
@@ -156,7 +186,7 @@ pronouns = {
 	"him": (PRO_MALE, PRO_SINGLE, PRO_PERSON),
 	"himself": (PRO_MALE, PRO_SINGLE, PRO_PERSON),
 	"his": (PRO_MALE, PRO_SINGLE, PRO_PERSON),
-	"half": (PRO_NEUTER, PRO_UNKNOWN, PRO_UNKNOWN),
+###	"half": (PRO_NEUTER, PRO_UNKNOWN, PRO_UNKNOWN),
 	"'em": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
 	"all": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
 	"our": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
