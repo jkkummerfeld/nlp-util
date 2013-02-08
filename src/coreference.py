@@ -50,7 +50,40 @@ def set_of_mentions(clusters):
 	return ans
 
 def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clusters, text, parses, heads):
-	# Create a mapping
+	changed = set()
+	# Apply changes for cases where the difference is only leading or trailing punctuation
+	mapping = {}
+	used_gold = set()
+	for amention in auto_mention_set.difference(gold_mention_set):
+		sentence, astart, aend = amention
+		while len(text[sentence][astart]) == 1 and text[sentence][astart] not in string.letters:
+			astart += 1
+		while len(text[sentence][aend-1]) == 1 and text[sentence][aend-1] not in string.letters:
+			aend -= 1
+		for gmention in gold_mention_set.difference(auto_mention_set):
+			if gmention in used_gold:
+				continue
+			gsentence, gstart, gend = gmention
+			if sentence != gsentence:
+				continue
+			while len(text[sentence][gstart]) == 1 and text[sentence][gstart] not in string.letters:
+				gstart += 1
+			while len(text[sentence][gend-1]) == 1 and text[sentence][gend-1] not in string.letters:
+				gend -= 1
+			if astart == gstart and aend == gend:
+				mapping[amention] = gmention
+				used_gold.add(gmention)
+	# Apply mapping to create new auto_mention_set
+	for mention in mapping:
+		auto_mention_set.remove(mention)
+		auto_mention_set.add(mapping[mention])
+		cluster_id = auto_mentions.pop(mention)
+		auto_mentions[mapping[mention]] = cluster_id
+		auto_clusters[cluster_id].remove(mention)
+		auto_clusters[cluster_id].append(mapping[mention])
+		changed.add((mention, mapping[mention]))
+
+	# Create a mapping based on heads
 	head_dict = defaultdict(lambda: {'auto': [], 'gold': []})
 	for mention in auto_mention_set.difference(gold_mention_set):
 		sentence, start, end = mention
@@ -64,35 +97,15 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 		if head is not None:
 			head = (mention[0], head[0])
 			head_dict[head]['gold'].append(mention)
+
 	mapping = {}
 	for head in head_dict:
-		if len(head_dict[head]['gold']) == 1 and len(head_dict[head]['auto']) == 1:
-			mapping[head_dict[head]['auto'][0]] = head_dict[head]['gold'][0]
-	
-	# Add mapping for cases where the difference is only leading or trailing punctuation
-	for amention in auto_mention_set.difference(gold_mention_set):
-		if amention in mapping:
-			continue
-		sentence, astart, aend = amention
-		while len(text[sentence][astart]) == 1 and text[sentence][astart] not in string.letters:
-			astart += 1
-		while len(text[sentence][aend-1]) == 1 and text[sentence][aend-1] not in string.letters:
-			aend -= 1
-		for gmention in gold_mention_set.difference(auto_mention_set):
-			gsentence, gstart, gend = gmention
-			if sentence != gsentence:
-				continue
-			while len(text[sentence][gstart]) == 1 and text[sentence][gstart] not in string.letters:
-				gstart += 1
-			while len(text[sentence][gend-1]) == 1 and text[sentence][gend-1] not in string.letters:
-				gend -= 1
-			if astart == gstart and aend == gend:
-				mapping[amention] = gmention
-
-	# TODO: Consider cases where the mention is not a constituent
+		amentions = head_dict[head]['auto']
+		gmentions = head_dict[head]['gold']
+		if len(amentions) == 1 and len(gmentions) == 1:
+			mapping[amentions[0]] = gmentions[0]
 
 	# Apply mapping to create new auto_mention_set
-	changed = set()
 	for mention in mapping:
 		auto_mention_set.remove(mention)
 		auto_mention_set.add(mapping[mention])
@@ -101,6 +114,7 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 		auto_clusters[cluster_id].remove(mention)
 		auto_clusters[cluster_id].append(mapping[mention])
 		changed.add((mention, mapping[mention]))
+	# TODO: Consider cases where the mention is not a constituent
 	return changed
 
 def confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters):

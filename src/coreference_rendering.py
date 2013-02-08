@@ -10,6 +10,42 @@ ANSI_WHITE = 15
 ANSI_YELLOW = 3
 ANSI_RED = 1
 
+def print_conll_style(data, out):
+	for doc in data:
+		for part in data[doc]:
+			print >> out, "#begin document (%s); part %s" % (doc, part)
+			text = data[doc][part]['text']
+
+			starts = defaultdict(lambda: [])
+			ends = defaultdict(lambda: [])
+			singles = defaultdict(lambda: [])
+			for mention in data[doc][part]['mentions']:
+				cluster_id = data[doc][part]['mentions'][mention]
+				if mention[2] - mention[1] == 1:
+					singles[mention[0], mention[1]].append(cluster_id)
+				else:
+					starts[mention[0], mention[1]].append(cluster_id)
+					ends[mention[0], mention[2] - 1].append(cluster_id)
+
+			for i in xrange(len(text)):
+				for j in xrange(len(text[i])):
+					coref = ''
+					if (i, j) in starts:
+						for cluster_id in starts[i, j]:
+							coref += '(' + str(cluster_id)
+					if (i, j) in singles:
+						for cluster_id in singles[i, j]:
+							coref += '(' + str(cluster_id) + ')'
+					if (i, j) in ends:
+						for cluster_id in ends[i, j]:
+							coref += str(cluster_id) + ')'
+					if coref == '':
+						coref = '-'
+					print >> out, "%s\t%d\t%d\t%s\t%s" % (doc, int(part), j, text[i][j], coref)
+				print >> out
+
+			print >> out, "#end"
+
 def mention_text(text, mention, parses=None, heads=None, colour=None):
 	sentence, start, end = mention
 	head = None
