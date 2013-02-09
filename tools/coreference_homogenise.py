@@ -29,25 +29,29 @@ def convert_underscored_filename(filename):
 	name = '/'.join(name.split('__')[:-1])
 	return name, part
 
-def read_bart(auto_src, gold_src):
-	'''BART output is in a separate file for each doc.'''
+def multifile_process(path, call):
 	auto = defaultdict(lambda: {})
 	gold = defaultdict(lambda: {})
-	for filename in glob.glob(os.path.join(auto_src, '*')):
+	for filename in glob.glob(path):
 		name, part = convert_underscored_filename(filename)
+		if "tc/ch/00/ch" in name:
+			val = int(name.split('_')[-1]) * 10 - 1
+			name = "tc/ch/00/ch_%04d" % val
 		coreference_reading.read_conll_matching_file(gold_src, name, gold)
-		auto[name][part] = coreference_reading.read_bart_coref(filename, gold[name][part]['text'])
+		auto[name][part] = call(filename, gold[name][part]['text'])
 	return auto, gold
+
+def read_bart(auto_src, gold_src):
+	'''BART output is in a separate file for each doc.'''
+	path = os.path.join(auto_src, '*')
+	call = coreference_reading.read_bart_coref
+	return multifile_process(path, call)
 
 def read_cherrypicker(auto_src, gold_src):
 	'''Cherrypicker output is in a separate file for each doc.'''
-	auto = defaultdict(lambda: {})
-	gold = defaultdict(lambda: {})
-	for filename in glob.glob(os.path.join(auto_src, '*responses')):
-		name, part = convert_underscored_filename(filename)
-		coreference_reading.read_conll_matching_file(gold_src, name, gold)
-		auto[name][part] = coreference_reading.read_cherrypicker_coref(filename, gold[name][part]['text'])
-	return auto, gold
+	path = os.path.join(auto_src, '*responses')
+	call = coreference_reading.read_cherrypicker_coref
+	return multifile_process(path, call)
 
 def read_ims(auto_src, gold_src):
 	'''IMS produces CoNLL style output, but with all fields. This will read it as normal.'''
@@ -60,13 +64,9 @@ def read_opennlp(auto_src, gold_src):
 
 def read_reconcile(auto_src, gold_src):
 	'''Reconcile output is in a separate file for each doc.'''
-	auto = defaultdict(lambda: {})
-	gold = defaultdict(lambda: {})
-	for filename in glob.glob(os.path.join(auto_src, '*coref')):
-		name, part = convert_underscored_filename(filename)
-		coreference_reading.read_conll_matching_file(gold_src, name, gold)
-		auto[name][part] = coreference_reading.read_reconcile_coref(filename, gold[name][part]['text'])
-	return auto, gold
+	path = os.path.join(auto_src, '*coref')
+	call = coreference_reading.read_reconcile_coref
+	return multifile_process(path, call)
 
 def read_relaxcor(auto_src, gold_src):
 	print "RelaxCor support is under development."
@@ -78,7 +78,10 @@ def read_stanford(auto_src, gold_src):
 	return auto, gold
 
 def read_uiuc(auto_src, gold_src):
-	print "UIUC support is under development."
+	'''UIUC output is in a separate file for each doc.'''
+	path = os.path.join(auto_src, '*out')
+	call = coreference_reading.read_uiuc_coref
+	return multifile_process(path, call)
 
 if __name__ == '__main__':
 	init.argcheck(sys.argv, 5, 5, "Translate a system output into the CoNLL format", "<prefix> <[bart,cherrypicker,ims,opennlp,reconcile,relaxcor,stanford.uiuc]> <dir | file> <gold dir>")

@@ -27,8 +27,7 @@ def read_conll_coref(lines):
 	# Assumes:
 	#  - Reading a single part
 	#  - Each mention has a unique span
-	#  - No crossing mentions (where s1 < s2 < e1 < e2)
-	regex = "([(][0-9]*[)])|([(][0-9]*)|([0-9]*[)])"
+	regex = "([(][0-9]*[)])|([(][0-9]*)|([0-9]*[)])|([|])"
 	mentions = {} # (sentence, start, end+1) -> ID
 	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
 	unmatched_mentions = defaultdict(lambda: [])
@@ -38,7 +37,7 @@ def read_conll_coref(lines):
 	for line in lines:
 		if len(line) > 0 and line[0] =='#':
 			continue
-		line = ''.join(line.strip().split('|'))
+		line = line.strip()
 		if len(line) == 0:
 			sentence += 1
 			word = 0
@@ -65,6 +64,73 @@ def read_conll_coref(lines):
 		word += 1
 	return mentions, clusters
 
+def read_uiuc_coref(filename, gold_text):
+	'''Example:
+	After *Mingxia Fu*_5 won **the champion for the *women*_8 platform*_6 diving*_4 , *the coach of *the *Soviet Union*_3 team*_0*_1 congratulated *her*_1 warmly . Photo taken by **Xinhua News Agency*_2 reporter*_7 , *Zhishan Cheng*_7 .
+	Note that occasionally words have *s, e.g. *when*, in which case this hits issues without manual editing of the text.
+	'''
+	mentions = {} # (sentence, start, end+1) -> ID
+	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
+	unmatched_mentions = []
+	text = [[]]
+	sentence = 0
+	word = 0
+	prev = ['', '']
+	for line in open(filename):
+		for token in line.split():
+			# Case of a single *
+			if re.match('^[*]+$', token) is None:
+				# Starts
+				for char in token:
+					if char == '*':
+						unmatched_mentions.append(word)
+					else:
+						break
+				
+				# Ends
+				regex = '[*][_][0-9]+'
+				for end in re.findall(regex, token):
+					cluster = int(end[2:])
+					start = unmatched_mentions.pop()
+					if (sentence, start, word + 1) in mentions:
+						print "Duplicate mention:", cluster, mentions[sentence, start, word + 1]
+					else:
+						mentions[sentence, start, word + 1] = cluster
+						clusters[cluster].append((sentence, start, word + 1))
+
+				# Strip down to just the token
+				while token[0] == '*':
+					token = token[1:]
+				regex = '[*][_][0-9]+'
+				token = re.split(regex, token)[0]
+
+			# Deal with token splitting
+			if token == gold_text[sentence][word]:
+				prev = ['', '']
+				word += 1
+				text[-1].append(token)
+			else:
+				if len(prev[0]) == 0:
+					prev[0] = gold_text[sentence][word]
+					prev[1] = token
+					text[-1].append(token)
+				elif prev[1] + token == prev[0]:
+					if len(text[-1]) == 0:
+						text[-2][-1] = prev[0]
+					else:
+						text[-1][-1] = prev[0]
+					word += 1
+					prev = ['', '']
+				else:
+					prev[1] += token
+			if word == len(gold_text[sentence]):
+				word = 0
+				sentence += 1
+				text.append([])
+	if len(text[-1]) == 0:
+		text.pop()
+	return {'clusters': clusters, 'mentions': mentions, 'text': text}
+
 def read_cherrypicker_coref(filename, gold_text):
 	'''Example:
 	<COREF ID="8" REF="7">Giant</COREF> agreed last month to purchase the <COREF ID="3" REF="2">carrier</COREF> .
@@ -76,28 +142,27 @@ def read_cherrypicker_coref(filename, gold_text):
 	text = [[]]
 	sentence = 0
 	word = 0
-	prev = []
+	prev = ['', '']
 	for line in open(filename):
 		for coref_start, coref_end, token in re.findall(regex, line.strip()):
 			if token != '':
 				token = token.strip()
 				if token != gold_text[sentence][word] and token not in '(){}[]':
-					if len(prev) == 0:
-						prev.append((token, gold_text[sentence][word]))
+					if len(prev[0]) == 0:
+						prev[0] = gold_text[sentence][word]
+						prev[1] = token
 						text[-1].append(token)
 						word += 1
-					elif prev[0][0] + token == prev[0][1]:
+					elif prev[1] + token == prev[0]:
 						if len(text[-1]) == 0:
 							text[-2][-1] += token
 						else:
 							text[-1][-1] += token
 					else:
-						print filename
-						print prev
-						print token
-						raise Exception("Uhoh")
+						print prev, token, filename
+						prev[1] += token
 				else:
-					prev = []
+					prev = ['', '']
 					text[-1].append(token)
 					word += 1
 				if word == len(gold_text[sentence]):
@@ -311,6 +376,9 @@ def read_conll_matching_files(conll_docs, dir_prefix):
 	# Read the corresponding file under dir_prefix
 	ans = None
 	for filename in conll_docs:
+		if "tc/ch/00/ch" in filename:
+			val = int(filename.split('_')[-1]) * 10 - 1
+			filename = "tc/ch/00/ch_%04d" % val
 		ans = read_conll_matching_file(dir_prefix, filename, ans)
 	return ans
 
