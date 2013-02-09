@@ -20,24 +20,34 @@ except:
 import os, glob
 from collections import defaultdict
 
+def convert_underscored_filename(filename):
+	head, tail = os.path.split(filename)
+	if tail is None or tail == '':
+		raise Exception("Impossible filename")
+	name = tail.split('.')[0]
+	part = name.split('__')[-1]
+	name = '/'.join(name.split('__')[:-1])
+	return name, part
+
 def read_bart(auto_src, gold_src):
 	'''BART output is in a separate file for each doc.'''
 	auto = defaultdict(lambda: {})
 	gold = defaultdict(lambda: {})
 	for filename in glob.glob(os.path.join(auto_src, '*')):
-		head, tail = os.path.split(filename)
-		if tail is None or tail == '':
-			raise Exception("Impossible filename")
-		name = tail.split('.')[0]
-		part = name.split('__')[-1]
-		name = '/'.join(name.split('__')[:-1])
+		name, part = convert_underscored_filename(filename)
 		coreference_reading.read_conll_matching_file(gold_src, name, gold)
 		auto[name][part] = coreference_reading.read_bart_coref(filename, gold[name][part]['text'])
 	return auto, gold
 
 def read_cherrypicker(auto_src, gold_src):
 	'''Cherrypicker output is in a separate file for each doc.'''
-	print "Cherrypicker support is under development."
+	auto = defaultdict(lambda: {})
+	gold = defaultdict(lambda: {})
+	for filename in glob.glob(os.path.join(auto_src, '*responses')):
+		name, part = convert_underscored_filename(filename)
+		coreference_reading.read_conll_matching_file(gold_src, name, gold)
+		auto[name][part] = coreference_reading.read_cherrypicker_coref(filename, gold[name][part]['text'])
+	return auto, gold
 
 def read_ims(auto_src, gold_src):
 	'''IMS produces CoNLL style output, but with all fields. This will read it as normal.'''
@@ -53,12 +63,7 @@ def read_reconcile(auto_src, gold_src):
 	auto = defaultdict(lambda: {})
 	gold = defaultdict(lambda: {})
 	for filename in glob.glob(os.path.join(auto_src, '*coref')):
-		head, tail = os.path.split(filename)
-		if tail is None or tail == '':
-			raise Exception("Impossible filename")
-		name = tail.split('.')[0]
-		part = name.split('__')[-1]
-		name = '/'.join(name.split('__')[:-1])
+		name, part = convert_underscored_filename(filename)
 		coreference_reading.read_conll_matching_file(gold_src, name, gold)
 		auto[name][part] = coreference_reading.read_reconcile_coref(filename, gold[name][part]['text'])
 	return auto, gold
@@ -67,6 +72,7 @@ def read_relaxcor(auto_src, gold_src):
 	print "RelaxCor support is under development."
 
 def read_stanford(auto_src, gold_src):
+	'''Stanford produces CoNLL style output, but with all fields. This will read it as normal.'''
 	auto = coreference_reading.read_conll_doc(auto_src, None, True, False, False, True)
 	gold = coreference_reading.read_conll_matching_files(auto, gold_src)
 	return auto, gold

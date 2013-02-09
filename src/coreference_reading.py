@@ -65,26 +65,64 @@ def read_conll_coref(lines):
 		word += 1
 	return mentions, clusters
 
-def read_cherrypicker_coref(filename):
-	regex = '(<COREF [^>]*>)|(</COREF> *)|([^<]* *)'
+def read_cherrypicker_coref(filename, gold_text):
+	'''Example:
+	<COREF ID="8" REF="7">Giant</COREF> agreed last month to purchase the <COREF ID="3" REF="2">carrier</COREF> .
+	Note, some manual editing was also required to deal with '+'s being split off.'''
+	regex = '(<COREF [^>]*>)|(</COREF> *)|( *[^< ][^< ]* *)'
 	mentions = {} # (sentence, start, end+1) -> ID
 	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
 	unmatched_mentions = []
+	text = [[]]
 	sentence = 0
+	word = 0
+	prev = []
 	for line in open(filename):
-		word = 0
 		for coref_start, coref_end, token in re.findall(regex, line.strip()):
 			if token != '':
-				word += 1
+				token = token.strip()
+				if token != gold_text[sentence][word] and token not in '(){}[]':
+					if len(prev) == 0:
+						prev.append((token, gold_text[sentence][word]))
+						text[-1].append(token)
+						word += 1
+					elif prev[0][0] + token == prev[0][1]:
+						if len(text[-1]) == 0:
+							text[-2][-1] += token
+						else:
+							text[-1][-1] += token
+					else:
+						print filename
+						print prev
+						print token
+						raise Exception("Uhoh")
+				else:
+					prev = []
+					text[-1].append(token)
+					word += 1
+				if word == len(gold_text[sentence]):
+					while len(unmatched_mentions) > 0:
+						cluster, start = unmatched_mentions.pop()
+						mentions[sentence, start, word] = cluster
+						clusters[cluster].append((sentence, start, word))
+					word = 0
+					sentence += 1
+					text.append([])
 			elif coref_start != '':
-				cluster = int(coref_start.split('ID="')[1].split('"')[0])
-				unmatched_mentions.append((cluster, word))
+				if 'REF=' in coref_start:
+					cluster = int(coref_start.split('REF="')[1].split('"')[0])
+					unmatched_mentions.append((cluster, word))
+				else:
+					cluster = int(coref_start.split('ID="')[1].split('"')[0])
+					unmatched_mentions.append((cluster, word))
 			elif coref_end != '':
-				cluster, start = unmatched_mentions.pop()
-				mentions[sentence, start, word] = cluster
-				clusters[cluster].append((sentence, start, word))
-		sentence += 1
-	return {'clusters': clusters, 'mentions': mentions}
+				if len(unmatched_mentions) > 0:
+					cluster, start = unmatched_mentions.pop()
+					mentions[sentence, start, word] = cluster
+					clusters[cluster].append((sentence, start, word))
+	if len(text[-1]) == 0:
+		text.pop()
+	return {'clusters': clusters, 'mentions': mentions, 'text': text}
 
 def read_bart_coref(filename, gold_text):
 	'''Example output:

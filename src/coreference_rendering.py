@@ -396,8 +396,8 @@ def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_h
 if __name__ == '__main__':
 	init.argcheck(sys.argv, 4, 4, "Print coreference resolution errors", "<prefix> <gold_dir> <test>")
 
-	auto = coreference_reading.read_coref_system_output(sys.argv[3])
-	gold = coreference_reading.read_matching_files(auto, sys.argv[2])
+	auto = coreference_reading.read_conll_coref_system_output(sys.argv[3])
+	gold = coreference_reading.read_conll_matching_files(auto, sys.argv[2])
 
 	out_cluster_errors = open(sys.argv[1] + '.cluster_errors', 'w')
 	out_cluster_context = open(sys.argv[1] + '.cluster_context', 'w')
