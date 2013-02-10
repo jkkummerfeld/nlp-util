@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, "util")
 try:
 	import ptb, render_tree
-except:
+except ImportError:
 	raise Exception("Remember to set up a symlink to the util directory")
 
 tex_start = '''\\documentclass[11pt]{article}

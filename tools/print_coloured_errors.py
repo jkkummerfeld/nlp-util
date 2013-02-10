@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, "util")
 try:
 	import ptb, render_tree, nlp_eval
-except:
+except ImportError:
 	raise Exception("Remember to set up a symlink to the util directory")
 
 def mprint(text, out_dict, out_name):

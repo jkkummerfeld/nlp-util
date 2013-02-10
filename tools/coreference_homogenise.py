@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, "util")
 try:
 	import init, coreference_reading, coreference_rendering
-except:
+except ImportError:
 	raise Exception("Remember to set up a symlink to the util directory")
 
 import os, glob
@@ -71,6 +71,12 @@ def read_reconcile(auto_src, gold_src):
 def read_relaxcor(auto_src, gold_src):
 	print "RelaxCor support is under development."
 
+def read_stanford_xml(auto_src, gold_src):
+	'''Stanford without conll settings producesone xml file for each input'''
+	path = os.path.join(auto_src, '*xml')
+	call = coreference_reading.read_stanford_coref
+	return multifile_process(path, call)
+
 def read_stanford(auto_src, gold_src):
 	'''Stanford produces CoNLL style output, but with all fields. This will read it as normal.'''
 	auto = coreference_reading.read_conll_doc(auto_src, None, True, False, False, True)
@@ -84,7 +90,7 @@ def read_uiuc(auto_src, gold_src):
 	return multifile_process(path, call)
 
 if __name__ == '__main__':
-	init.argcheck(sys.argv, 5, 5, "Translate a system output into the CoNLL format", "<prefix> <[bart,cherrypicker,ims,opennlp,reconcile,relaxcor,stanford.uiuc]> <dir | file> <gold dir>")
+	init.argcheck(sys.argv, 5, 5, "Translate a system output into the CoNLL format", "<prefix> <[bart,cherrypicker,ims,opennlp,reconcile,relaxcor,stanford,stanford_xml,uiuc]> <dir | file> <gold dir>")
 
 	out = open(sys.argv[1] + '.out', 'w')
 	log = open(sys.argv[1] + '.log', 'w')
@@ -99,6 +105,7 @@ if __name__ == '__main__':
 		'opennlp': read_opennlp,
 		'reconcile': read_reconcile,
 		'relaxcor': read_relaxcor,
+		'stanford_xml': read_stanford_xml,
 		'stanford': read_stanford,
 		'uiuc': read_uiuc
 	}[sys.argv[2]](auto_src, gold_src)

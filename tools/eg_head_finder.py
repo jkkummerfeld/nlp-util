@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, "util")
 try:
 	import ptb, head_finder
-except:
+except ImportError:
 	raise Exception("Remember to set up a symlink to the util directory")
 
 def headed_tree(tree, head_map, depth=0):

@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, "util")
 try:
 	import ptb
-except:
+except ImportError:
 	raise Exception("Remember to set up a symlink to the util directory")
 
 def update_span_errors(gold_tree, test_tree, errors):

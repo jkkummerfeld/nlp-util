@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, "util")
 try:
 	import render_coreference
-except:
+except ImportError:
 	raise Exception("Remember to set up a symlink to the util directory")
 
 if __name__ == '__main__':
