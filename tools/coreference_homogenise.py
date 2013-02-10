@@ -112,3 +112,5 @@ if __name__ == '__main__':
 
 	coreference_rendering.print_conll_style(auto, out)
 
+	out.close()
+	log.close()

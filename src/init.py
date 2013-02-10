@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+'''A collection of useful functions at startup.  There are definitely more
+powerful, and flexible, alternatives out there, but this was what I needed at
+the time.'''
 
 import sys
 
@@ -15,11 +18,14 @@ def header(args, out=sys.stdout):
 		print >> sys.stderr, "Invalid list of output files passed to header"
 		sys.exit(1)
 
-def argcheck(argv, minargs, maxargs, desc, arg_desc):
+def argcheck(argv, minargs, maxargs, desc, arg_desc, further_desc=''):
 	if minargs <= len(argv) <= maxargs:
 		return
 	print >> sys.stderr, desc
 	print >> sys.stderr, ("  %s " + arg_desc) % argv[0]
+	if len(further_desc) > 0:
+		print >> sys.stderr
+		print >> sys.stderr, further_desc
 	sys.exit(1)
 
 if __name__ == "__main__":
