@@ -29,18 +29,20 @@ def print_conll_style(data, out):
 
 			for i in xrange(len(text)):
 				for j in xrange(len(text[i])):
-					coref = ''
+					coref = []
 					if (i, j) in starts:
 						for cluster_id in starts[i, j]:
-							coref += '(' + str(cluster_id)
+							coref.append('(' + str(cluster_id))
 					if (i, j) in singles:
 						for cluster_id in singles[i, j]:
-							coref += '(' + str(cluster_id) + ')'
+							coref.append('(' + str(cluster_id) + ')')
 					if (i, j) in ends:
 						for cluster_id in ends[i, j]:
-							coref += str(cluster_id) + ')'
-					if coref == '':
+							coref.append(str(cluster_id) + ')')
+					if len(coref) == 0:
 						coref = '-'
+					else:
+						coref = '|'.join(coref)
 					print >> out, "%s\t%d\t%d\t%s\t%s" % (doc, int(part), j, text[i][j], coref)
 				print >> out
 

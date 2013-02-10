@@ -56,6 +56,9 @@ def read_conll_coref(lines):
 					val = int(triple[2][:-1])
 					if (sentence, val) not in unmatched_mentions:
 						print lines
+						print triple
+						print fields
+						print line
 						raise Exception("Ending mention with no start: " + str(val))
 					start = unmatched_mentions[(sentence, val)].pop()
 				end = word + 1
@@ -76,6 +79,7 @@ def read_uiuc_coref(filename, gold_text):
 	sentence = 0
 	word = 0
 	prev = ['', '']
+	last_sentence = []
 	for line in open(filename):
 		for token in line.split():
 			# Case of a single *
@@ -83,7 +87,7 @@ def read_uiuc_coref(filename, gold_text):
 				# Starts
 				for char in token:
 					if char == '*':
-						unmatched_mentions.append(word)
+						unmatched_mentions.append((word, sentence))
 					else:
 						break
 				
@@ -91,12 +95,15 @@ def read_uiuc_coref(filename, gold_text):
 				regex = '[*][_][0-9]+'
 				for end in re.findall(regex, token):
 					cluster = int(end[2:])
-					start = unmatched_mentions.pop()
-					if (sentence, start, word + 1) in mentions:
-						print "Duplicate mention:", cluster, mentions[sentence, start, word + 1]
+					end = word + 1
+					start, msentence = unmatched_mentions.pop()
+					if msentence != sentence:
+						end = len(gold_text[msentence])
+					if (msentence, start, end) in mentions:
+						print "Duplicate mention:", cluster, mentions[msentence, start, end]
 					else:
-						mentions[sentence, start, word + 1] = cluster
-						clusters[cluster].append((sentence, start, word + 1))
+						mentions[msentence, start, end] = cluster
+						clusters[cluster].append((msentence, start, end))
 
 				# Strip down to just the token
 				while token[0] == '*':
@@ -376,7 +383,7 @@ def read_conll_matching_files(conll_docs, dir_prefix):
 	# Read the corresponding file under dir_prefix
 	ans = None
 	for filename in conll_docs:
-		if "tc/ch/00/ch" in filename:
+		if "tc/ch/00/ch" in filename and '9' not in filename:
 			val = int(filename.split('_')[-1]) * 10 - 1
 			filename = "tc/ch/00/ch_%04d" % val
 		ans = read_conll_matching_file(dir_prefix, filename, ans)

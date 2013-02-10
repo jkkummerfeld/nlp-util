@@ -56,9 +56,9 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 	used_gold = set()
 	for amention in auto_mention_set.difference(gold_mention_set):
 		sentence, astart, aend = amention
-		while len(text[sentence][astart]) == 1 and text[sentence][astart] not in string.letters:
+		while len(text[sentence][astart]) == 1 and text[sentence][astart] not in string.letters and astart < aend - 1:
 			astart += 1
-		while len(text[sentence][aend-1]) == 1 and text[sentence][aend-1] not in string.letters:
+		while len(text[sentence][aend-1]) == 1 and text[sentence][aend-1] not in string.letters and astart < aend - 1:
 			aend -= 1
 		for gmention in gold_mention_set.difference(auto_mention_set):
 			if gmention in used_gold:
@@ -66,9 +66,9 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 			gsentence, gstart, gend = gmention
 			if sentence != gsentence:
 				continue
-			while len(text[sentence][gstart]) == 1 and text[sentence][gstart] not in string.letters:
+			while len(text[sentence][gstart]) == 1 and text[sentence][gstart] not in string.letters and gstart < gend - 1:
 				gstart += 1
-			while len(text[sentence][gend-1]) == 1 and text[sentence][gend-1] not in string.letters:
+			while len(text[sentence][gend-1]) == 1 and text[sentence][gend-1] not in string.letters and gstart < gend - 1:
 				gend -= 1
 			if astart == gstart and aend == gend:
 				mapping[amention] = gmention
