@@ -26,7 +26,7 @@ def read_conll_text(lines):
 def read_conll_coref(lines):
 	# Assumes:
 	#  - Reading a single part
-	#  - Each mention has a unique span
+	#  - If duplicate mentions occur, use the first
 	regex = "([(][0-9]*[)])|([(][0-9]*)|([0-9]*[)])|([|])"
 	mentions = {} # (sentence, start, end+1) -> ID
 	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
@@ -62,10 +62,74 @@ def read_conll_coref(lines):
 						raise Exception("Ending mention with no start: " + str(val))
 					start = unmatched_mentions[(sentence, val)].pop()
 				end = word + 1
-				mentions[(sentence, start, end)] = val
-				clusters[val].append((sentence, start, end))
+				if (sentence, start, end) in mentions:
+					print >> sys.stderr, "Duplicate mention", sentence, start, end, val, mentions[sentence, start, end]
+				else:
+					mentions[sentence, start, end] = val
+					clusters[val].append((sentence, start, end))
 		word += 1
 	return mentions, clusters
+
+def read_stanford_coref(filename, gold_text):
+	'''Example (most of the file clipped):
+    <coreference>
+      <coreference>
+        <mention representative="true">
+          <sentence>1</sentence>
+          <start>13</start>
+          <end>15</end>
+          <head>14</head>
+        </mention>
+        <mention>
+          <sentence>15</sentence>
+          <start>43</start>
+          <end>45</end>
+          <head>44</head>
+        </mention>
+      </coreference>
+      <coreference>
+        <mention representative="true">
+          <sentence>1</sentence>
+          <start>16</start>
+          <end>17</end>
+          <head>16</head>
+        </mention>
+        <mention>
+          <sentence>9</sentence>
+          <start>1</start>
+          <end>2</end>
+          <head>1</head>
+        </mention>
+      </coreference>
+    </coreference>'''
+	mentions = {} # (sentence, start, end+1) -> ID
+	clusters = defaultdict(lambda: []) # ID -> list of (sentence, start, end+1)s
+	text = [[]]
+	sentence = None
+	start = None
+	end = None
+	cluster = 0
+	for line in open(filename):
+		if '<word>' in line:
+			text[-1].append(line.split('<word>')[1].split('</word>')[0])
+		elif '</sentence>' in line:
+			if '<sentence>' not in line:
+				text.append([])
+			else:
+				sentence = int(line.split('<sentence>')[1].split('</sentence>')[0]) - 1
+		elif '<start>' in line:
+			start = int(line.split('<start>')[1].split('</start>')[0]) - 1
+		elif '<end>' in line:
+			end = int(line.split('<end>')[1].split('</end>')[0]) - 1
+		elif '</coreference>' in line:
+			cluster += 1
+		elif '</mention>' in line:
+			if (sentence, start, end) in mentions:
+				print "Duplicate mention:", cluster, mentions[sentence, start, end]
+			else:
+				mentions[sentence, start, end] = cluster
+				clusters[cluster].append((sentence, start, end))
+	return {'clusters': clusters, 'mentions': mentions, 'text': text}
 
 def read_uiuc_coref(filename, gold_text):
 	'''Example:
