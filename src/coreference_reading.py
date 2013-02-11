@@ -214,48 +214,60 @@ def read_cherrypicker_coref(filename, gold_text):
 	sentence = 0
 	word = 0
 	prev = ['', '']
+	mapping = {}
+	word_convert = {'learnt': 'learned', 'learned': 'learnt'}
 	for line in open(filename):
 		for coref_start, coref_end, token in re.findall(regex, line.strip()):
 			if token != '':
+				print token, gold_text[sentence][word]
 				token = token.strip()
-				if token != gold_text[sentence][word] and token not in '(){}[]':
+				allowed = token == gold_text[sentence][word]
+				allowed = allowed or token in '{}[]()'
+				allowed = allowed or (token in word_convert and word_convert[token] == gold_text[sentence][word])
+				allowed = allowed or '/'.join(token.split('_')) == gold_text[sentence][word]
+				if allowed:
+					prev = ['', '']
+					word += 1
+					text[-1].append(token)
+				else:
 					if len(prev[0]) == 0:
 						prev[0] = gold_text[sentence][word]
 						prev[1] = token
 						text[-1].append(token)
-						word += 1
-					elif prev[1] + token == prev[0]:
+						print prev, token, filename
+					elif prev[1] + token == prev[0] or '/'.join((prev[1] + token).split('_')) == prev[0]:
 						if len(text[-1]) == 0:
-							text[-2][-1] += token
+							text[-2][-1] = prev[0]
 						else:
-							text[-1][-1] += token
+							text[-1][-1] = prev[0]
+						word += 1
+						prev = ['', '']
+						print prev, token, filename
 					else:
 						print prev, token, filename
 						prev[1] += token
-				else:
-					prev = ['', '']
-					text[-1].append(token)
-					word += 1
+
 				if word == len(gold_text[sentence]):
-					while len(unmatched_mentions) > 0:
-						cluster, start = unmatched_mentions.pop()
-						mentions[sentence, start, word] = cluster
-						clusters[cluster].append((sentence, start, word))
 					word = 0
 					sentence += 1
 					text.append([])
 			elif coref_start != '':
+				mention_id = int(coref_start.split('ID="')[1].split('"')[0])
 				if 'REF=' in coref_start:
-					cluster = int(coref_start.split('REF="')[1].split('"')[0])
-					unmatched_mentions.append((cluster, word))
+					cluster = mapping[int(coref_start.split('REF="')[1].split('"')[0])]
 				else:
-					cluster = int(coref_start.split('ID="')[1].split('"')[0])
-					unmatched_mentions.append((cluster, word))
+					cluster = mention_id
+				mapping[mention_id] = cluster
+				unmatched_mentions.append((cluster, sentence, word))
 			elif coref_end != '':
-				if len(unmatched_mentions) > 0:
-					cluster, start = unmatched_mentions.pop()
-					mentions[sentence, start, word] = cluster
-					clusters[cluster].append((sentence, start, word))
+				cluster, msentence, start = unmatched_mentions.pop()
+				end = word
+				if msentence != sentence:
+					end = len(gold_text[msentence])
+				elif end == start and len(prev[0]) > 0:
+					end += 1
+				mentions[msentence, start, end] = cluster
+				clusters[cluster].append((msentence, start, end))
 	if len(text[-1]) == 0:
 		text.pop()
 	return {'clusters': clusters, 'mentions': mentions, 'text': text}

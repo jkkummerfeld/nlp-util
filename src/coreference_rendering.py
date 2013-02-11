@@ -13,9 +13,12 @@ ANSI_RED = 1
 def print_conll_style(data, out):
 	for doc in data:
 		for part in data[doc]:
-			print >> out, "#begin document (%s); part %s" % (doc, part)
 			text = data[doc][part]['text']
-
+			doc_str = doc
+			if "tc/ch/00/ch" in doc and '9' not in doc:
+				val = int(doc.split('_')[-1]) * 10 - 1
+				doc_str = "tc/ch/00/ch_%04d" % val
+			print >> out, "#begin document (%s); part %s" % (doc_str, part)
 			starts = defaultdict(lambda: [])
 			ends = defaultdict(lambda: [])
 			singles = defaultdict(lambda: [])
@@ -43,7 +46,7 @@ def print_conll_style(data, out):
 						coref = '-'
 					else:
 						coref = '|'.join(coref)
-					print >> out, "%s\t%d\t%d\t%s\t%s" % (doc, int(part), j, text[i][j], coref)
+					print >> out, "%s\t%d\t%d\t%s\t%s" % (doc_str, int(part), j, text[i][j], coref)
 				print >> out
 
 			print >> out, "#end"

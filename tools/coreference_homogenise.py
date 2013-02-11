@@ -109,6 +109,14 @@ if __name__ == '__main__':
 		'stanford': read_stanford,
 		'uiuc': read_uiuc
 	}[sys.argv[2]](auto_src, gold_src)
+	
+	for doc in auto:
+		for part in auto[doc]:
+			for mention in auto[doc][part]['mentions']:
+				if mention[1] >= mention[2]:
+					info = "Invalid mention span %s from %s %s" % (str(mention), doc, part)
+					info += '\n' + gold[doc][part]['text'][mention[0]]
+					raise Exception(info)
 
 	coreference_rendering.print_conll_style(auto, out)
 
