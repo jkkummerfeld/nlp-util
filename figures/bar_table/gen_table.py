@@ -26,8 +26,6 @@ System order and possibly extra columns:
 	<input_ID1> <val> <val>
 	<input_ID2> <val> <val>'''
 
-#TODO: Use extra column info for system order
-
 import sys
 sys.path.insert(0, "util")
 try:
@@ -51,8 +49,10 @@ Worst & 1000 & 2000 \\
 \end{tabular}
 '''
 
-def print_top(error_order, out):
+def print_top(error_order, extra_info, out):
 	col_format = ''.join(['|' if val == '|' else 'c' for val in error_order])
+	if extra_info is not None:
+		col_format = len(extra_info['Titles']) * 'c' + col_format
 	print >> out, "\\begin{tabular}{l%s}" % (col_format)
 	print >> out, "\t\\hline"
 	parts_present = 1
@@ -60,16 +60,34 @@ def print_top(error_order, out):
 		if len(error) > 3:
 			parts_present = len(error[3])
 	if parts_present == 1:
-		print >> out, "\tSystem & %s \\\\" % ' & '.join([val[0] for val in error_order if val != '|'])
+		print >> out, "\tSystem &",
+		if extra_info is not None:
+			print >> out, ' & '.join(extra_info['Titles']),
+			print >> out, "&",
+		print >> out, ' & '.join([val[0] for val in error_order if val != '|']),
+		print >> out, "\\\\"
 	else:
-		print >> out, "\tSystem & %s \\\\" % ' & '.join([val[0] if len(val) == 3 else val[3][0] for val in error_order if val != '|'])
+		print >> out, "\tSystem &",
+		if extra_info is not None:
+			print >> out, ' & '.join(extra_info['Titles']),
+			print >> out, "&",
+		print >> out, ' & '.join([val[0] if len(val) == 3 else val[3][0] for val in error_order if val != '|'])
+		print >> out, "\\\\"
 		for i in xrange(1, parts_present):
-			print >> out, "\t & %s \\\\" % ' & '.join(['' if len(val) == 3 else val[3][i] for val in error_order if val != '|'])
+			print >> out, "\t &",
+			if extra_info is not None:
+				print >> out, ' & '.join([' ' for j in xrange(len(extra_info['Titles']))]),
+				print >> out, "&",
+			print >> out, "%s \\\\" % ' & '.join(['' if len(val) == 3 else val[3][i] for val in error_order if val != '|'])
 	print >> out, "\t\\hline"
 	print >> out, "\t\\hline"
-	print >> out, "\tBest & %s \\\\" % ' & '.join([str(int(val[1])) for val in error_order if val != '|'])
+	print >> out, "\tBest &",
+	if extra_info is not None:
+		print >> out, ' & '.join([' ' for i in xrange(len(extra_info['Titles']))]),
+		print >> out, "&",
+	print >> out, "%s \\\\" % ' & '.join([str(int(val[1])) for val in error_order if val != '|'])
 
-def print_data(system_order, error_order, data, mapping, out):
+def print_data(system_order, error_order, data, mapping, extra_info, out):
 	entry_template = "\\scalebox{0.23}{\\begin{pspicture}(0,0)(4,1)\\psframe(0,0)(4,1)\\psframe*[linecolor=black](0,0)(%f,1)\\end{pspicture}}\\hspace{1.5mm}"
 	text = {}
 	for name, info in data:
@@ -85,10 +103,21 @@ def print_data(system_order, error_order, data, mapping, out):
 		name = os.path.split(system)[1]
 		if name in mapping:
 			name = mapping[name]
-		print >> out, "\t%s & %s \\\\" % (name, ' & '.join([entry_template % val for val in text[system]]))
+		print >> out, "\t%s &" % name,
+		if extra_info is not None:
+			if system in extra_info:
+				print >> out, ' & '.join(extra_info[system]),
+			else:
+				print >> out, ' & '.join([' ' for val in xrange(len(extra_info['Titles']))]),
+			print >> out, "&",
+		print >> out, "%s \\\\" % ' & '.join([entry_template % val for val in text[system]])
 
-def print_bottom(error_order, out):
-	print >> out, "\tWorst & %s \\\\" % ' & '.join([str(int(val[2])) for val in error_order if val != '|'])
+def print_bottom(error_order, extra_info, out):
+	print >> out, "\tWorst &",
+	if extra_info is not None:
+		print >> out, ' & '.join([' ' for i in xrange(len(extra_info['Titles']))]),
+		print >> out, "&",
+	print >> out, "%s \\\\" % ' & '.join([str(int(val[2])) for val in error_order if val != '|'])
 	print >> out, "\t\\hline"
 	print >> out, "\\end{tabular}"
 
@@ -101,7 +130,7 @@ def get_data(filename):
 		if len(line) == 0:
 			continue
 		if line[0] not in string.digits:
-			cur_name = line.split()[1]
+			cur_name = os.path.split(line.split()[1])[-1]
 			cur_data = {}
 			data.append((cur_name, cur_data))
 		else:
@@ -147,8 +176,19 @@ def get_order(data, system_order_file, error_order_file):
 
 	# Order the systems so that the best is at the top
 	system_order = []
+	extra_info = None
 	if system_order_file is not None:
-		system_order = [name.strip().split()[0] for name in open(system_order_file)][1:]
+		system_order = []
+		for line in open(system_order_file):
+			fields = line.strip().split()
+			name = fields[0]
+			if name == 'Titles':
+				if len(fields) > 0:
+					extra_info = {'Titles': fields[1:]}
+			else:
+				system_order.append(line.strip().split()[0]) 
+				if len(fields) > 0:
+					extra_info[name] = fields[1:]
 	else:
 		first_error = error_order[0]
 		for name, info in data:
@@ -157,7 +197,7 @@ def get_order(data, system_order_file, error_order_file):
 			system_order.append((info[first_error[0]], name))
 		system_order.sort()
 		system_order = [val[1] for val in system_order]
-	return system_order, error_order
+	return system_order, error_order, extra_info
 
 def print_error_order(error_order, out):
 	for val in error_order:
@@ -165,6 +205,25 @@ def print_error_order(error_order, out):
 			print >> out, val
 		else:
 			print >> out, val[0]
+
+def print_mapping(mapping, data, mapping_out):
+	for name, info in data:
+		name = os.path.split(name)[-1]
+		if name in mapping:
+			print >> mapping_out, name, mapping[name]
+		else:
+			print >> mapping_out, name
+
+def print_system_order(system_order, extra_info, system_out):
+	if extra_info is not None:
+		print >> system_out, "Titles", ' '.join(extra_info[titles])
+	else:
+		print >> system_out, "Titles"
+	for system in system_order:
+		if extra_info is not None:
+			print >> system_out, system, ' '.join(extra_info[system])
+		else:
+			print >> system_out, system
 
 if __name__ == '__main__':
 	# TODO, shift to a uniform style of module documentation, then just skip all of this!
@@ -182,29 +241,33 @@ if __name__ == '__main__':
 	mapping = {}
 	if len(sys.argv) > 3:
 		mapping = get_mapping(sys.argv[3])
-
 	system_order_file = None
 	if len(sys.argv) > 5:
 		system_order_file = sys.argv[5]
 	error_order_file = None
 	if len(sys.argv) > 4:
 		error_order_file = sys.argv[4]
-	system_order, error_order = get_order(data, system_order_file, error_order_file)
+	system_order, error_order, extra_info = get_order(data, system_order_file, error_order_file)
+
 	print >> log, "System order:", system_order
 	print >> log, "Error order:", error_order
 
-	print_top(error_order, out)
-	print_data(system_order, error_order, data, mapping, out)
-	print_bottom(error_order, out)
+	print_top(error_order, extra_info, out)
+	print_data(system_order, error_order, data, mapping, extra_info, out)
+	print_bottom(error_order, extra_info, out)
 
 	if len(sys.argv) < 6:
-		pass #TODO: print system order file
+		system_out = open(sys.argv[1] + '.table.system_order', 'w')
+		print_system_order(system_order, extra_info, system_out)
+		system_out.close()
 	if len(sys.argv) < 5:
 		error_out = open(sys.argv[1] + '.table.error_order', 'w')
 		print_error_order(error_order, error_out)
 		error_out.close()
 	if len(sys.argv) < 4:
-		pass #TODO: print name mapping file
+		mapping_out = open(sys.argv[1] + '.table.name_mapping', 'w')
+		print_mapping(mapping, data, mapping_out)
+		mapping_out.close()
 
 	out.close()
 	log.close()
