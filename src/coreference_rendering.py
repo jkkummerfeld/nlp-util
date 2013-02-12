@@ -49,7 +49,7 @@ def print_conll_style(data, out):
 					print >> out, "%s\t%d\t%d\t%s\t%s" % (doc_str, int(part), j, text[i][j], coref)
 				print >> out
 
-			print >> out, "#end"
+			print >> out, "#end document"
 
 def mention_text(text, mention, parses=None, heads=None, colour=None):
 	sentence, start, end = mention

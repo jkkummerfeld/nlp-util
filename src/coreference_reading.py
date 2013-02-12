@@ -68,6 +68,9 @@ def read_conll_coref(lines):
 					mentions[sentence, start, end] = val
 					clusters[val].append((sentence, start, end))
 		word += 1
+	for key in unmatched_mentions:
+		if len(unmatched_mentions[key]) > 0:
+			raise Exception("Mention started, but did not end " + str(unmatched_mentions[key]))
 	return mentions, clusters
 
 def read_stanford_coref(filename, gold_text):
@@ -395,7 +398,7 @@ def read_reconcile_coref(filename, gold_text):
 				end = word
 				if sentence != msentence:
 					end = len(text[msentence])
-				if len(prev) > 0:
+				elif len(prev) > 0:
 					end += 1
 				mentions[msentence, start, end] = cluster
 				clusters[cluster].append((msentence, start, end))
