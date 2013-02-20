@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
 	if out_format == 't':
 		print tex_start
-	for tree in ptb.generate_trees(sys.stdin, return_empty=True, ptb_in=in_format):
+	for tree in ptb.generate_trees(sys.stdin, return_empty=True):
 		gold_tree = None
 		if gold_file is not None:
 			gold_tree = gold_file.next()
