@@ -91,11 +91,13 @@ def print_data(system_order, error_order, data, mapping, extra_info, out):
 	entry_template = "\\scalebox{0.23}{\\begin{pspicture}(0,0)(4,1)\\psframe(0,0)(4,1)\\psframe*[linecolor=black](0,0)(%f,1)\\end{pspicture}}\\hspace{1.5mm}"
 	text = {}
 	for name, info in data:
+		print name
 		text[name] = []
 		for error in error_order:
 			if error == '|':
 				continue
 			emin = error[1]
+			emin = 0
 			emax = error[2]
 			val = info[error[0]] 
 			text[name].append(4 * (val - emin) / (emax - emin))

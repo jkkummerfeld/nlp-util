@@ -7,7 +7,8 @@ import string
 import head_finder
 
 # TODO: Look into better head finding (e.g. behaviour when brackets come up,
-# and for appositives, where it often goes into the constituent in apposition)
+# and for appositives, where it often goes into the constituent in apposition,
+# and also for 's)
 # Also, should default last be on or not?
 
 def mention_head(mention, text, parses, heads, default_last=True):
@@ -22,7 +23,7 @@ def mention_head(mention, text, parses, heads, default_last=True):
 
 def mention_type(mention, text, parses, heads):
 	head_span, head_word, head_pos = mention_head(mention, text, parses, heads)
-	if mention[2] - mention[1] == 1 and (head_pos in ["PRP", "PRP$", "WP", "WP$", "WDT", "WRB"] or head_word.lower() in pronouns):
+	if mention[2] - mention[1] == 1 and (head_pos in ["PRP", "PRP$", "WP", "WP$", "WDT", "WRB"] or head_word.lower() in pronoun_properties):
 		return "pronoun"
 	elif head_pos in ["NNP", "NNPS"]:
 		return "name"
@@ -56,9 +57,9 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 	used_gold = set()
 	for amention in auto_mention_set.difference(gold_mention_set):
 		sentence, astart, aend = amention
-		while len(text[sentence][astart]) == 1 and text[sentence][astart] not in string.letters and astart < aend - 1:
+		while len(text[sentence][astart]) == 1 and text[sentence][astart][0] not in string.letters and astart < aend - 1:
 			astart += 1
-		while len(text[sentence][aend-1]) == 1 and text[sentence][aend-1] not in string.letters and astart < aend - 1:
+		while len(text[sentence][aend-1]) == 1 and text[sentence][aend-1][0] not in string.letters and astart < aend - 1:
 			aend -= 1
 		for gmention in gold_mention_set.difference(auto_mention_set):
 			if gmention in used_gold:
@@ -66,9 +67,9 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 			gsentence, gstart, gend = gmention
 			if sentence != gsentence:
 				continue
-			while len(text[sentence][gstart]) == 1 and text[sentence][gstart] not in string.letters and gstart < gend - 1:
+			while len(text[sentence][gstart]) == 1 and text[sentence][gstart][0] not in string.letters and gstart < gend - 1:
 				gstart += 1
-			while len(text[sentence][gend-1]) == 1 and text[sentence][gend-1] not in string.letters and gstart < gend - 1:
+			while len(text[sentence][gend-1]) == 1 and text[sentence][gend-1][0] not in string.letters and gstart < gend - 1:
 				gend -= 1
 			if astart == gstart and aend == gend:
 				mapping[amention] = gmention
@@ -82,6 +83,7 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 		auto_clusters[cluster_id].remove(mention)
 		auto_clusters[cluster_id].append(mapping[mention])
 		changed.add((mention, mapping[mention]))
+###		print "Changed", mention, mapping[mention]
 
 	# Create a mapping based on heads
 	head_dict = defaultdict(lambda: {'auto': [], 'gold': []})
@@ -114,6 +116,7 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 		auto_clusters[cluster_id].remove(mention)
 		auto_clusters[cluster_id].append(mapping[mention])
 		changed.add((mention, mapping[mention]))
+###		print "Changed", mention, mapping[mention]
 	# TODO: Consider cases where the mention is not a constituent
 	return changed
 
@@ -161,7 +164,9 @@ def confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters)
 		groups.append(group)
 	return groups
 
-PRO_PERSON = 1
+PRO_FIRST = 1
+PRO_SECOND = 2
+PRO_THIRD = 3
 PRO_PLURAL = 2
 PRO_SINGLE = 1
 PRO_UNKNOWN = 0
@@ -169,9 +174,10 @@ PRO_FEMALE = 1
 PRO_MALE = 2
 PRO_NEUTER = 3
 
-pronouns = {
+pronoun_properties = {
 ###	"'s": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
 ###	"s": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
+###	"half": (PRO_NEUTER, PRO_UNKNOWN, PRO_UNKNOWN),
 	"that": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
 	"whatever": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
 	"who": (PRO_UNKNOWN, PRO_UNKNOWN, PRO_UNKNOWN),
@@ -179,45 +185,87 @@ pronouns = {
 	"how": (PRO_UNKNOWN, PRO_SINGLE, PRO_UNKNOWN),
 	"whoever": (PRO_UNKNOWN, PRO_SINGLE, PRO_UNKNOWN),
 	"whose": (PRO_UNKNOWN, PRO_SINGLE, PRO_UNKNOWN),
-	"i": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"me": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"mine": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"my": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"myself": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"one": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"thyself": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"ya": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"you": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"your": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"yourself": (PRO_UNKNOWN, PRO_SINGLE, PRO_PERSON),
-	"her": (PRO_FEMALE, PRO_SINGLE, PRO_PERSON),
-	"hers": (PRO_FEMALE, PRO_SINGLE, PRO_PERSON),
-	"herself": (PRO_FEMALE, PRO_SINGLE, PRO_PERSON),
-	"she": (PRO_FEMALE, PRO_SINGLE, PRO_PERSON),
-	"he": (PRO_MALE, PRO_SINGLE, PRO_PERSON),
-	"him": (PRO_MALE, PRO_SINGLE, PRO_PERSON),
-	"himself": (PRO_MALE, PRO_SINGLE, PRO_PERSON),
-	"his": (PRO_MALE, PRO_SINGLE, PRO_PERSON),
-###	"half": (PRO_NEUTER, PRO_UNKNOWN, PRO_UNKNOWN),
+	"i": (PRO_UNKNOWN, PRO_SINGLE, PRO_FIRST),
+	"me": (PRO_UNKNOWN, PRO_SINGLE, PRO_FIRST),
+	"mine": (PRO_UNKNOWN, PRO_SINGLE, PRO_FIRST),
+	"my": (PRO_UNKNOWN, PRO_SINGLE, PRO_FIRST),
+	"myself": (PRO_UNKNOWN, PRO_SINGLE, PRO_FIRST),
+	"one": (PRO_UNKNOWN, PRO_SINGLE, PRO_UNKNOWN),
+	"thyself": (PRO_UNKNOWN, PRO_SINGLE, PRO_UNKNOWN),
+	"ya": (PRO_UNKNOWN, PRO_SINGLE, PRO_SECOND),
+	"you": (PRO_UNKNOWN, PRO_SINGLE, PRO_SECOND),
+	"your": (PRO_UNKNOWN, PRO_SINGLE, PRO_SECOND),
+	"yourself": (PRO_UNKNOWN, PRO_SINGLE, PRO_SECOND),
+	"her": (PRO_FEMALE, PRO_SINGLE, PRO_THIRD),
+	"hers": (PRO_FEMALE, PRO_SINGLE, PRO_THIRD),
+	"herself": (PRO_FEMALE, PRO_SINGLE, PRO_THIRD),
+	"she": (PRO_FEMALE, PRO_SINGLE, PRO_THIRD),
+	"he": (PRO_MALE, PRO_SINGLE, PRO_THIRD),
+	"him": (PRO_MALE, PRO_SINGLE, PRO_THIRD),
+	"himself": (PRO_MALE, PRO_SINGLE, PRO_THIRD),
+	"his": (PRO_MALE, PRO_SINGLE, PRO_THIRD),
 	"'em": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
 	"all": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
 	"our": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
 	"ours": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
+	"yours": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
 	"ourselves": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"their": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"theirs": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"them": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"themselves": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"they": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"us": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"we": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
-	"it": (PRO_NEUTER, PRO_SINGLE, PRO_UNKNOWN),
-	"its": (PRO_NEUTER, PRO_SINGLE, PRO_UNKNOWN),
-	"itself": (PRO_NEUTER, PRO_SINGLE, PRO_UNKNOWN),
+	"yourselves": (PRO_NEUTER, PRO_PLURAL, PRO_UNKNOWN),
+	"their": (PRO_NEUTER, PRO_PLURAL, PRO_THIRD),
+	"theirs": (PRO_NEUTER, PRO_PLURAL, PRO_THIRD),
+	"them": (PRO_NEUTER, PRO_PLURAL, PRO_THIRD),
+	"themselves": (PRO_NEUTER, PRO_PLURAL, PRO_THIRD),
+	"they": (PRO_NEUTER, PRO_PLURAL, PRO_THIRD),
+	"us": (PRO_NEUTER, PRO_PLURAL, PRO_FIRST),
+	"we": (PRO_NEUTER, PRO_PLURAL, PRO_FIRST),
+	"it": (PRO_NEUTER, PRO_SINGLE, PRO_THIRD),
+	"its": (PRO_NEUTER, PRO_SINGLE, PRO_THIRD),
+	"itself": (PRO_NEUTER, PRO_SINGLE, PRO_THIRD),
 	"what": (PRO_NEUTER, PRO_SINGLE, PRO_UNKNOWN),
 	"when": (PRO_NEUTER, PRO_SINGLE, PRO_UNKNOWN),
 	"where": (PRO_NEUTER, PRO_SINGLE, PRO_UNKNOWN),
 	"which": (PRO_NEUTER, PRO_SINGLE, PRO_UNKNOWN)
+###another
+###any
+###anybody
+###anyone
+###anything
+###both
+###each
+###eachother
+###either
+###em
+###everybody
+###everyone
+###everything
+###few
+###how
+###little
+###many
+###more
+###most
+###much
+###neither
+###nobody
+###none
+###noone
+###nothing
+###oneanother
+###other
+###others
+###several
+###some
+###somebody
+###someone
+###something
+###these
+###this
+###those
+###thyself
+###when
+###where
+###whichever
+###whomever
 }
 
 if __name__ == '__main__':

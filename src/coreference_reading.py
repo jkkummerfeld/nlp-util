@@ -23,6 +23,30 @@ def read_conll_text(lines):
 		text.pop()
 	return text
 
+def read_conll_ner(lines):
+	info = {}
+	word = 0
+	sentence = 0
+	cur = []
+	for line in lines:
+		fields = line.strip().split()
+		if len(fields) >= 11:
+			ner_info = fields[10]
+			if '(' in ner_info and '*' in ner_info:
+				cur.append((ner_info[1:-1], sentence, word))
+			elif '(' in ner_info and ')' in ner_info:
+				info[sentence, word, word +1] = ner_info[1:-1]
+			elif ')' in ner_info and '*' in ner_info:
+				start = cur.pop()
+				if sentence != start[1]:
+					print >> sys.stderr, "Something mucked up", sentence, word, start
+				info[sentence, start[2], word +1] = start[0]
+		word += 1
+		if len(fields) == 0:
+			sentence += 1
+			word = 0
+	return info
+
 def read_conll_coref(lines):
 	# Assumes:
 	#  - Reading a single part
@@ -406,7 +430,7 @@ def read_reconcile_coref(filename, gold_text):
 		text.pop()
 	return {'clusters': clusters, 'mentions': mentions, 'text': text}
 
-def read_conll_doc(filename, ans=None, rtext=True, rparses=True, rheads=True, rclusters=True):
+def read_conll_doc(filename, ans=None, rtext=True, rparses=True, rheads=True, rclusters=True, rner=True):
 	# Read entire file, inserting into a dictionary:
 	#  key - the #begin <blah> info
 	#  value - a dict, one entry per part, each entry contains:
@@ -437,11 +461,21 @@ def read_conll_doc(filename, ans=None, rtext=True, rparses=True, rheads=True, rc
 							info['heads'] = [head_finder.collins_find_heads(parse) for parse in info['parses']]
 					if rclusters:
 						info['mentions'], info['clusters'] = read_conll_coref(cur)
+					if rner:
+						info['ner'] = read_conll_ner(cur)
 					ans[keys[0]][keys[1]] = info
 					keys = None
 			cur = []
 		else:
 			cur.append(line)
+	return ans
+
+def read_conll_gold_files(dir_prefix):
+	ans = defaultdict(lambda: {})
+	query = os.path.join(dir_prefix, '*/*/*/*gold*conll')
+	print query
+	for filename in glob.glob(query):
+		read_conll_doc(filename, ans)
 	return ans
 
 def read_conll_coref_system_output(filename, ans=None):
