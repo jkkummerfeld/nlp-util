@@ -1,4 +1,7 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim: set ts=4 sw=4 noet:
+
 from setuptools import setup, find_packages
 import os
 VERSION = open(os.path.join(os.path.dirname(__file__), 'VERSION')).read().strip()
