@@ -3,11 +3,7 @@
 import sys
 from collections import defaultdict
 
-# TODO: 
-###todo Handle malformed input with trees that:
-###todo  - (())
-###todo  - Lack a (RROT )
-###todo  - Have random stuff instead of symbols
+# TODO: Handle malformed input with trees that have random stuff instead of symbols
 
 word_to_word_mapping = {
 	'{': '-LCB-',
@@ -562,7 +558,24 @@ def apply_collins_rules(tree, left=0):
 	ans.label = ans.label.split('=')[0]
 	return ans
 
-def read_tree(source, return_empty=False, input_format='ptb'):
+def homogenise_tree(tree):
+	if tree.label != 'ROOT':
+		while tree.label not in tag_set:
+			if len(tree.subtrees) > 1:
+				break
+			tree = tree.subtrees[0]
+		if tree.label not in tag_set:
+			tree.label = 'ROOT'
+		else:
+			root = PTB_Tree()
+			root.subtrees.append(tree)
+			root.label = 'ROOT'
+			root.span = tree.span
+			tree.parent = root
+			tree = root
+	return tree
+
+def read_tree(source, return_empty=False, input_format='ptb', homogenise=True):
 	'''Read a single tree from the given file.
 	
 	>>> from StringIO import StringIO
@@ -604,6 +617,8 @@ def read_tree(source, return_empty=False, input_format='ptb'):
 				tree = PTB_Tree()
 				tree.set_by_text(text)
 				tree.label = 'ROOT'
+				if homogenise:
+					tree = homogenise_tree(tree)
 				return tree
 			elif return_empty:
 				return "Empty"
@@ -628,10 +643,12 @@ def read_tree(source, return_empty=False, input_format='ptb'):
 				continue
 			tree = PTB_Tree()
 			tree.set_by_text(cur_text)
+			if homogenise:
+				tree = homogenise_tree(tree)
 			return tree
 	return None
 
-def generate_trees(source, max_sents=-1, return_empty=False, input_format='ptb'):
+def generate_trees(source, max_sents=-1, return_empty=False, input_format='ptb', homogenise=True):
 	'''Read trees from the given file (opening the file if only a string is given).
 
 	This version is a generator, yielding one tree at a time.
