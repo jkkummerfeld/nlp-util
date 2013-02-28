@@ -33,3 +33,7 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# setuptools packages
+setuptools_git-1.0b1-py2.7.egg
+nlp_util.egg-info

@@ -27,11 +27,7 @@ System order and possibly extra columns:
 	<input_ID2> <val> <val>'''
 
 import sys
-sys.path.insert(0, "util")
-try:
-	import init
-except ImportError:
-	raise Exception("Remember to set up a symlink to the util directory")
+from nlp_util import init
 
 import string, os
 
@@ -227,7 +223,7 @@ def print_system_order(system_order, extra_info, system_out):
 		else:
 			print >> system_out, system
 
-if __name__ == '__main__':
+def main():
 	# TODO, shift to a uniform style of module documentation, then just skip all of this!
 	desc = __doc__.split('\n')
 	arg_info = desc[1]
@@ -274,3 +270,5 @@ if __name__ == '__main__':
 	out.close()
 	log.close()
 
+if __name__ == '__main__':
+    main()

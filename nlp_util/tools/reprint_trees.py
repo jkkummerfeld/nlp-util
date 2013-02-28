@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.insert(0, "util")
-try:
-	import ptb, render_tree
-except ImportError:
-	raise Exception("Remember to set up a symlink to the util directory")
+from nlp_util import ptb, render_tree
 
 tex_start = '''\\documentclass[11pt]{article}
 \\usepackage{times}
@@ -52,7 +48,7 @@ def get_args():
 		i += 1
 	return args
 
-if __name__ == '__main__':
+def main():
 	if len(sys.argv) == 1:
 		print "Read trees from stdin and print them to stdout."
 		print "Options:"
@@ -121,3 +117,6 @@ if __name__ == '__main__':
 			print render_tree.text_words(tree)
 	if out_format == 't':
 		print '\\end{document}'
+
+if __name__ == '__main__':
+    main()
