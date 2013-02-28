@@ -565,6 +565,9 @@ def homogenise_tree(tree):
 		while tree.label not in tag_set:
 			if len(tree.subtrees) > 1:
 				break
+			elif len(tree.subtrees) == 0:
+				tree.label = 'ROOT'
+				return tree
 			tree = tree.subtrees[0]
 		if tree.label not in tag_set:
 			tree.label = 'ROOT'
