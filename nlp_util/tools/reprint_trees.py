@@ -54,7 +54,7 @@ def main():
 		print "Options:"
 		print "  -(i)nput = (p)enn treebank | (c)onll or OntoNotes"
 		print "  -(f)ormat = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes"
-		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules"
+		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top"
 		print "  -(g)old = <gold filenmae>"
 		print "e.g. %s -f t -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
 		sys.exit(0)
@@ -63,13 +63,15 @@ def main():
 	in_format = args["i"] == 'p' if 'i' in args else True
 	out_format = args["f"] if 'f' in args else 's'
 	edits = args["e"] if 'e' in args else 'c'
+	homogenise_top = 'h' in edits
+	print edits
 	gold_file = args["g"] if 'g' in args else None
 	if gold_file is not None:
 		gold_file = ptb.generate_trees(gold_file)
 
 	if out_format == 't':
 		print tex_start
-	for tree in ptb.generate_trees(sys.stdin, return_empty=True):
+	for tree in ptb.generate_trees(sys.stdin, return_empty=True, homogenise=homogenise_top):
 		gold_tree = None
 		if gold_file is not None:
 			gold_tree = gold_file.next()
