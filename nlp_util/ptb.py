@@ -353,7 +353,7 @@ class PTB_Tree:
 					return subtree.get_matching_node(node)
 			return None
 
-	def get_errors(self, gold):
+	def get_errors(self, gold, include_POS=False):
 		ans = []
 		gold_spans = gold.span_list()
 		test_spans = self.span_list()
@@ -371,6 +371,15 @@ class PTB_Tree:
 			if key not in gold_span_set:
 				gold_span_set[key] = 0
 			gold_span_set[key] += 1
+
+		# Different POS
+		if include_POS:
+			for tnode in self:
+				if tnode.word is not None:
+					for gnode in gold:
+						if gnode.word is not None and gnode.span == tnode.span:
+							if gnode.label != tnode.label:
+								ans.append(('diff POS', tnode.span, tnode.label, tnode, gnode.label))
 
 		# Extra
 		for span in test_spans:
@@ -395,10 +404,8 @@ class PTB_Tree:
 					if span[0] < tspan[0] < span[1] < tspan[1]:
 						is_crossing = True
 						break
-				if is_crossing:
-					ans.append(('crossing', (span[0], span[1]), span[2].label, span[2]))
-				else:
-					ans.append(('missing', (span[0], span[1]), span[2].label, span[2]))
+				name = 'crossing' if is_crossing else 'missing'
+				ans.append((name, (span[0], span[1]), span[2].label, span[2]))
 			else:
 				test_span_set[key] -= 1
 		return ans

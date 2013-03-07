@@ -4,12 +4,13 @@
 
 import ptb
 
+# TODO:todo Fix handling of traces throughout
+
 # Sites that render trees
 # http://mshang.ca/syntree/
 # http://www.yohasebe.com/rsyntaxtree/
 
 def text_words(tree, span=None, pos=0, return_tuple=False):
-	# TODO:todo Fix handling of traces
 	ans = ''
 	if tree.word is not None:
 		if span is None or span[0] <= pos < span[1]:
@@ -143,46 +144,76 @@ def tex_synttree(tree, other_spans=None, depth=0, compressed=True, span=None):
 		ans += '[%s [.t %s]]' % (label, words)
 	return ans
 
-# TODO:todo Add the option to include/exclude POS tag errors
-def text_coloured_errors(tree, gold=None, depth=0, single_line=False, missing=None, extra=None, compressed=True):
+def text_coloured_errors(tree, gold=None, depth=0, single_line=False, missing=None, extra=None, compressed=True, POS=True):
 	'''Pretty print, with errors marked using colour.
 	
-	'missing' should contain tuples:
+	'missing' should contain tuples (or be None):
 		(start, end, label, crossing-T/F)
 	'''
+	ans = ''
 	if missing is None or extra is None:
 		if gold is None:
 			return "Error - no gold tree and no missing list for colour repr"
 		# look at gold and work out what missing should be
-		errors = tree.get_errors(gold)
+		errors = tree.get_errors(gold, POS is not None)
+###		for error in errors:
+###			ans += '%s (%d, %d) %s\n' % (error[0], error[1][0], error[1][1], error[2])
 		extra = [e[3] for e in errors if e[0] == 'extra' and e[3].word is None]
 		extra = set(extra)
 		missing = [(e[1][0], e[1][1], e[2], False) for e in errors if e[0] == 'missing' and e[3].word is None]
 		missing += [(e[1][0], e[1][1], e[2], True) for e in errors if e[0] == 'crossing' and e[3].word is None]
+		POS = [e for e in errors if e[0] == 'diff POS']
 	start_missing = "\033[01;36m"
 	start_extra = "\033[01;31m"
 	start_crossing = "\033[01;33m"
 	end_colour = "\033[00m"
 	
-	ans = ''
 	if not single_line:
 		ans += '\n' + depth * '\t'
 
 	# start of this
 	if tree in extra:
 		ans += start_extra + '(' + tree.label + end_colour
+	elif tree.word is not None and POS is not None:
+		found = False
+		for error in POS:
+			if error[3] == tree:
+				found = True
+				ans += '(' + start_missing + error[4] + end_colour
+				ans += ' ' + start_extra + tree.label + end_colour
+				break
+		if not found:
+			ans += '(' + tree.label
 	else:
 		ans += '(' + tree.label
 	
 	# If we are compressing, check for correctness and then just print words
+	sub_done = False
 	if compressed and tree not in extra and tree.word is None:
-		match = gold.get_matching_node(tree)
-		if match is not None:
-			mnodes = set([(node.span[0], node.span[1], node.label) for node in match if node.word is None])
-			tnodes = set([(node.span[0], node.span[1], node.label) for node in tree if node.word is None])
-			if len(mnodes.symmetric_difference(tnodes)) == 0:
-				ans += ' ' + text_words(tree) + ')'
-				return ans
+		all_right = True
+		for error in extra:
+			if tree.span[0] <= error.span[0] and error.span[1] <= tree.span[1]:
+				all_right = False
+				break
+		for error in missing:
+			if error[3]:
+				if tree.span[0] < error[0] < tree.span[1]:
+					all_right = False
+					break
+				if tree.span[0] < error[1] < tree.span[1]:
+					all_right = False
+					break
+			elif tree.span[0] <= error[0] and error[1] <= tree.span[1]:
+				all_right = False
+				break
+		if POS is not None:
+			for error in POS:
+				if tree.span[0] <= error[1][0] and error[1][1] <= tree.span[1]:
+					all_right = False
+					break
+		if all_right:
+			ans += ' ' + text_words(tree) + ')'
+			sub_done = True
 
 	# crossing brackets starting
 	if tree.parent is None or tree.parent.subtrees[0] != tree:
@@ -193,52 +224,70 @@ def text_coloured_errors(tree, gold=None, depth=0, single_line=False, missing=No
 				labels.append((error[1], error[2]))
 		labels.sort(reverse=True)
 		if len(labels) > 0:
-			ans += ' ' + start_crossing + ' '.join(['(' + label[1] for label in labels]) + end_colour
+			to_add = start_crossing + ' '.join(['(' + label[1] for label in labels]) + end_colour
+			if sub_done:
+				nans = ''
+				for char in ans:
+					if char in '\t\n':
+						nans += char
+				clen = len(nans)
+				nans += to_add
+				nans += ' ' + ans[clen:]
+				ans = nans
+			else:
+				ans += ' ' + to_add
 
-	# word
-	if tree.word is not None:
-		ans += ' ' + tree.word
+	if not sub_done:
+		# word
+		if tree.word is not None:
+			ans += ' ' + tree.word
 
-	# subtrees
-	below = []
-	for subtree in tree.subtrees:
-		text = text_coloured_errors(subtree, gold, depth + 1, single_line, missing, extra, compressed)
-		if single_line:
-			text = ' ' + text
-		below.append([subtree.span[0], subtree.span[1], text])
-	# add missing brackets that surround subtrees
-	for length in xrange(1, len(below)):
-		for i in xrange(len(below)):
-			j = i + length
-			if i == 0 and j == len(below) - 1:
-				continue
-			if j >= len(below):
-				continue
-			for error in missing:
-				if below[i][0] == error[0] and below[j][1] == error[1] and not error[3]:
-					start = below[i][2].split('(')[0]
-					for k in xrange(i, j+1):
-						below[k][2] = '\n\t'.join(below[k][2].split('\n'))
-					below[i][2] = start + start_missing + '(' + error[2] + end_colour + below[i][2]
-					below[j][2] += start_missing + ')' + end_colour
-	ans += ''.join([part[2] for part in below])
+		# subtrees
+		below = []
+		for subtree in tree.subtrees:
+			text = text_coloured_errors(subtree, gold, depth + 1, single_line, missing, extra, compressed, POS)
+			if single_line:
+				text = ' ' + text
+			below.append([subtree.span[0], subtree.span[1], text])
+		# add missing brackets that surround subtrees
+		for length in xrange(1, len(below)):
+			for i in xrange(len(below)):
+				j = i + length
+				if i == 0 and j == len(below) - 1:
+					continue
+				if j >= len(below):
+					break
+				for error in missing:
+					if below[i][0] == error[0] and below[j][1] == error[1] and not error[3]:
+						start = ''
+						for char in below[i][2]:
+							if char not in '\n\t':
+								break
+							start += char
+						for k in xrange(i, j+1):
+							below[k][2] = '\n\t'.join(below[k][2].split('\n'))
+						below[i][2] = start + start_missing + '(' + error[2] + end_colour + below[i][2]
+						below[j][2] += start_missing + ')' + end_colour
+		ans += ''.join([part[2] for part in below])
 
-	# end of this
-	if tree in extra:
-		ans += start_extra + ')' + end_colour
-	else:
-		ans += ')'
+		# end of this
+		if tree in extra:
+			ans += start_extra + ')' + end_colour
+		else:
+			ans += ')'
 
 	if tree.parent is None or tree.parent.subtrees[-1] != tree:
 		# if there are crossing brackets that end here, mark that
 		labels = []
 		for error in missing:
 			if error[1] == tree.span[1] and error[3]:
-				labels.append((error[0], error[2]))
-		labels.sort(reverse=True)
+				labels.append((-error[0], error[2]))
+		labels.sort()
 		if len(labels) > 0:
 			ans += ' ' + start_crossing + ' '.join([label[1] + ')' for label in labels]) + end_colour
 
+	# TODO: Change so that at the top level, FRAG etc isn't printed outside of ROOT
+	# Actually, just have a canonical ordering for unaries (so that NPs end up under FRAGs)
 	if tree.parent is None or len(tree.parent.subtrees) > 1:
 		# check for missing brackets that go around this node
 		for error in missing:

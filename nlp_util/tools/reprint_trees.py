@@ -64,7 +64,6 @@ def main():
 	out_format = args["f"] if 'f' in args else 's'
 	edits = args["e"] if 'e' in args else 'c'
 	homogenise_top = 'h' in edits
-	print edits
 	gold_file = args["g"] if 'g' in args else None
 	if gold_file is not None:
 		gold_file = ptb.generate_trees(gold_file)

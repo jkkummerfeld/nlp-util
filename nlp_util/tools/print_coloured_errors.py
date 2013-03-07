@@ -116,6 +116,11 @@ if __name__ == '__main__':
 			mprint(gold_tree.__repr__(), out, 'all')
 			continue
 
+		if '()' in test_text:
+			mprint("() test tree", out, 'all')
+			mprint(test_complete_tree.__repr__(), out, 'all')
+			mprint(test_tree.__repr__(), out, 'all')
+			continue
 		test_complete_tree = ptb.PTB_Tree()
 		test_complete_tree.set_by_text(test_text)
 		test_nofunc_tree = ptb.remove_function_tags(test_complete_tree)

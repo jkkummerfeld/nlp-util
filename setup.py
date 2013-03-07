@@ -6,6 +6,8 @@ from setuptools import setup, find_packages
 import os
 VERSION = open(os.path.join(os.path.dirname(__file__), 'VERSION')).read().strip()
 
+# Note - for reading in data files, etc, from git, the 'setuptools_git' and
+# include_... lines are needed (and a way to get those is needed)
 setup(
   name='nlp-util',
   version=VERSION,
