@@ -76,6 +76,7 @@ def main():
 			gold_tree = gold_file.next()
 
 		if tree is None:
+			print
 			continue
 
 		# Apply edits

@@ -204,7 +204,7 @@ class PTB_Tree:
 				sub.production_list(ans)
 		return ans
 
-	def word_yield(self, span=None, pos=-1):
+	def word_yield(self, span=None, pos=-1, as_list=False):
 		return_tuple = True
 		if pos < 0:
 			pos = 0
@@ -215,13 +215,20 @@ class PTB_Tree:
 				ans = (pos + 1, self.word)
 			else:
 				ans = (pos + 1, '')
+			if as_list:
+				ans = (ans[0], [ans[1]])
 		else:
 			text = []
 			for subtree in self.subtrees:
-				pos, words = subtree.word_yield(span, pos)
-				if words != '':
-					text.append(words)
+				pos, words = subtree.word_yield(span, pos, as_list)
+				if words != '' and len(words) > 0:
+					if as_list:
+						text += words
+					else:
+						text.append(words)
 			ans = (pos, ' '.join(text))
+			if as_list:
+				ans = (pos, text)
 		if return_tuple:
 			return ans
 		else:
