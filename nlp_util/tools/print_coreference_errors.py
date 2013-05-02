@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.insert(0, "util")
 try:
-	import render_coreference
+	from nlp_util import render_coreference
 except ImportError:
-	raise Exception("Remember to set up a symlink to the util directory")
+	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
 
 if __name__ == '__main__':
 	init.argcheck(sys.argv, 4, 4, "Print coreference resolution errors", "<prefix> <gold_dir> <test>")

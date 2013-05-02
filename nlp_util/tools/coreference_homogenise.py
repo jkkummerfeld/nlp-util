@@ -11,11 +11,10 @@ intended header:  #begin document (bn/voa/02/voa_0220); part 000
 '''
 
 import sys
-sys.path.insert(0, "util")
 try:
-	import init, coreference_reading, coreference_rendering
+	from nlp_util import init, coreference_reading, coreference_rendering
 except ImportError:
-	raise Exception("Remember to set up a symlink to the util directory")
+	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
 
 import os, glob
 from collections import defaultdict

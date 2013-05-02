@@ -27,33 +27,33 @@ System order and possibly extra columns:
 	<input_ID2> <val> <val>'''
 
 import sys
-from nlp_util import init
+try:
+	from nlp_util import init
+except ImportError:
+	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
 
 import string, os
-
-'''
-\begin{tabular}{lcc}
-	\hline
-		Label & Val1 & Val2 \\
-	\hline
-	\hline
-Best & 1 & 0 \\
-Sys1 & \scalebox{0.23}{\begin{pspicture}(0,0)(4,1)\psframe(0,0)(4,1)\psframe*[linecolor=black](0,0)(0.000000,1)\end{pspicture}}\hspace{1.5mm} & \scalebox{0.23}{\begin{pspicture}(0,0)(4,1)\psframe(0,0)(4,1)\psframe*[linecolor=black](0,0)(0.000000,1)\end{pspicture}}\hspace{1.5mm} \\
-Sys2 & \scalebox{0.23}{\begin{pspicture}(0,0)(4,1)\psframe(0,0)(4,1)\psframe*[linecolor=black](0,0)(4.000000,1)\end{pspicture}}\hspace{1.5mm}& \scalebox{0.23}{\begin{pspicture}(0,0)(4,1)\psframe(0,0)(4,1)\psframe*[linecolor=black](0,0)(3.971480,1)\end{pspicture}}\hspace{1.5mm} \\
-Worst & 1000 & 2000 \\
-	\hline
-\end{tabular}
-'''
 
 def print_top(error_order, extra_info, out):
 	col_format = ''.join(['|' if val == '|' else 'c' for val in error_order])
 	if extra_info is not None:
 		col_format = len(extra_info['Titles']) * 'c' + col_format
-	print >> out, "\\begin{tabular}{l%s}" % (col_format)
+
+	print >> out, '''\\begin{table*}
+		% Table size
+		\\small
+		\\renewcommand{\\tabcolsep}{1.6mm}
+		% Box parameters
+		\\renewcommand{\\fboxsep}{0mm}
+		\\renewcommand{\\fboxrule}{0.05mm}
+		\\newcommand{\\mybarheight}{2mm}
+		\\newcommand{\\myboxwidth}{8mm}
+		\\begin{center}'''
+	print >> out, "\\begin{tabular}{|l%s|}" % (col_format)
 	print >> out, "\t\\hline"
 	parts_present = 1
 	for error in error_order:
-		if len(error) > 3:
+		if len(error) > 3 and len(error[3]) > parts_present:
 			parts_present = len(error[3])
 	if parts_present == 1:
 		print >> out, "\tSystem &",
@@ -63,28 +63,37 @@ def print_top(error_order, extra_info, out):
 		print >> out, ' & '.join([val[0] for val in error_order if val != '|']),
 		print >> out, "\\\\"
 	else:
-		print >> out, "\tSystem &",
-		if extra_info is not None:
-			print >> out, ' & '.join(extra_info['Titles']),
-			print >> out, "&",
-		print >> out, ' & '.join([val[0] if len(val) == 3 else val[3][0] for val in error_order if val != '|'])
-		print >> out, "\\\\"
-		for i in xrange(1, parts_present):
+		for pos in xrange(parts_present - 1):
 			print >> out, "\t &",
 			if extra_info is not None:
 				print >> out, ' & '.join([' ' for j in xrange(len(extra_info['Titles']))]),
 				print >> out, "&",
-			print >> out, "%s \\\\" % ' & '.join(['' if len(val) == 3 else val[3][i] for val in error_order if val != '|'])
+			headings = []
+			for val in error_order:
+				if val == '|':
+					headings.append('')
+				elif parts_present - 1 - pos >= len(val[3]):
+					headings.append('')
+				else:
+					headings.append(val[3][pos])
+			print >> out, ' & '.join(headings)
+			print >> out, "\\\\"
+		print >> out, "\tSystem &",
+		if extra_info is not None:
+			print >> out, ' & '.join(extra_info['Titles']),
+			print >> out, "&",
+		print >> out, ' & '.join([val[0] if len(val) == 3 else val[3][-1] for val in error_order if val != '|'])
+		print >> out, "\\\\"
 	print >> out, "\t\\hline"
 	print >> out, "\t\\hline"
 	print >> out, "\tBest &",
 	if extra_info is not None:
 		print >> out, ' & '.join([' ' for i in xrange(len(extra_info['Titles']))]),
 		print >> out, "&",
-	print >> out, "%s \\\\" % ' & '.join([str(int(val[1])) for val in error_order if val != '|'])
+	print >> out, "%s \\\\" % ' & '.join(["%.2f" % val[1] for val in error_order if val != '|'])
 
 def print_data(system_order, error_order, data, mapping, extra_info, out):
-	entry_template = "\\scalebox{0.23}{\\begin{pspicture}(0,0)(4,1)\\psframe(0,0)(4,1)\\psframe*[linecolor=black](0,0)(%f,1)\\end{pspicture}}\\hspace{1.5mm}"
+	entry_template = " \\framebox[\\myboxwidth][l]{\\rule{%fmm}{\\mybarheight}}"
 	text = {}
 	for name, info in data:
 		print name
@@ -93,10 +102,11 @@ def print_data(system_order, error_order, data, mapping, extra_info, out):
 			if error == '|':
 				continue
 			emin = error[1]
-			emin = 0
+###			emin = 0
 			emax = error[2]
+###			emax = 4
 			val = info[error[0]] 
-			text[name].append(4 * (val - emin) / (emax - emin))
+			text[name].append(8 * (val - emin) / (emax - emin))
 	for system in system_order:
 		name = os.path.split(system)[1]
 		if name in mapping:
@@ -115,9 +125,13 @@ def print_bottom(error_order, extra_info, out):
 	if extra_info is not None:
 		print >> out, ' & '.join([' ' for i in xrange(len(extra_info['Titles']))]),
 		print >> out, "&",
-	print >> out, "%s \\\\" % ' & '.join([str(int(val[2])) for val in error_order if val != '|'])
+	print >> out, "%s \\\\" % ' & '.join(["%.2f" % val[2] for val in error_order if val != '|'])
 	print >> out, "\t\\hline"
 	print >> out, "\\end{tabular}"
+	print >> out, "\\caption{\\label{tab:}"
+	print >> out, "}"
+	print >> out, "\\end{center}"
+	print >> out, "\\end{table*}"
 
 def get_data(filename):
 	data = []

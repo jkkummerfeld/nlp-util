@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vim: set ts=4 sw=4 noet:
 
 import ptb
 
@@ -21,6 +20,24 @@ def text_words(tree, span=None, pos=0, return_tuple=False):
 		text = []
 		for subtree in tree.subtrees:
 			pos, words = text_words(subtree, span, pos, True)
+			if words != '':
+				text.append(words)
+		ans = ' '.join(text)
+		if return_tuple:
+			ans = (pos, ans)
+	return ans
+
+def text_POS_tagged(tree, span=None, pos=0, return_tuple=False):
+	ans = ''
+	if tree.word is not None:
+		if span is None or span[0] <= pos < span[1]:
+			ans = tree.word + '|' + tree.label
+		if return_tuple:
+			ans = (pos + 1, ans)
+	else:
+		text = []
+		for subtree in tree.subtrees:
+			pos, words = text_POS_tagged(subtree, span, pos, True)
 			if words != '':
 				text.append(words)
 		ans = ' '.join(text)
@@ -150,6 +167,9 @@ def text_coloured_errors(tree, gold=None, depth=0, single_line=False, missing=No
 	'missing' should contain tuples (or be None):
 		(start, end, label, crossing-T/F)
 	'''
+	# TODO: Add the ability to compress the same parts consistently (even after
+	# errors are no longer present). This would need to be span based as
+	# structure could change.
 	ans = ''
 	if missing is None or extra is None:
 		if gold is None:

@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.insert(0, "util")
 try:
-	import coreference_reading, init
+	from nlp_util import init, coreference_reading
 except ImportError:
-	raise Exception("Remember to set up a symlink to the util directory")
+	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
 
 if __name__ == '__main__':
 	init.argcheck(sys.argv, 3, 3, "Print conll text", "<prefix> <data>")

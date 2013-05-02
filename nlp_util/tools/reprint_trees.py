@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 
 import sys
-from nlp_util import ptb, render_tree
+try:
+	from nlp_util import ptb, render_tree
+except ImportError:
+	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
+
+#TODO Add the ability to print multiple outputs in a single run, to dfferent files
 
 tex_start = '''\\documentclass[11pt]{article}
 \\usepackage{times}
@@ -53,7 +58,7 @@ def main():
 		print "Read trees from stdin and print them to stdout."
 		print "Options:"
 		print "  -(i)nput = (p)enn treebank | (c)onll or OntoNotes"
-		print "  -(f)ormat = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes"
+		print "  -(f)ormat = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged"
 		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top"
 		print "  -(g)old = <gold filenmae>"
 		print "e.g. %s -f t -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
@@ -62,7 +67,7 @@ def main():
 	args = get_args()
 	in_format = args["i"] == 'p' if 'i' in args else True
 	out_format = args["f"] if 'f' in args else 's'
-	edits = args["e"] if 'e' in args else 'c'
+	edits = args["e"] if 'e' in args else ''
 	homogenise_top = 'h' in edits
 	gold_file = args["g"] if 'g' in args else None
 	if gold_file is not None:
@@ -100,6 +105,8 @@ def main():
 			print render_tree.text_tree(tree, single_line=False)
 		elif out_format == 'o':
 			print render_tree.text_ontonotes(tree)
+		elif out_format == 'p':
+			print render_tree.text_POS_tagged(tree)
 		elif out_format == 't':
 			if gold_tree is None:
 				print '\\scalebox{\\derivscale}{'

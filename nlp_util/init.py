@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vim: set ts=4 sw=4 noet:
 
 '''A collection of useful functions at startup.  There are definitely more
 powerful, and flexible, alternatives out there, but this was what I needed at

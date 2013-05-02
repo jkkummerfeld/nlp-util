@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vim: set ts=4 sw=4 noet:
 
 from setuptools import setup, find_packages
 import os
@@ -9,7 +8,7 @@ VERSION = open(os.path.join(os.path.dirname(__file__), 'VERSION')).read().strip(
 # Note - for reading in data files, etc, from git, the 'setuptools_git' and
 # include_... lines are needed (and a way to get those is needed)
 setup(
-  name='nlp-util',
+  name='nlp_util',
   version=VERSION,
   description='NLP utils by JKK',
   url='https://github.com/jkkummerfeld/nlp-util',

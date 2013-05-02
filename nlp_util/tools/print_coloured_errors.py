@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.insert(0, "util")
 try:
-	import ptb, render_tree, nlp_eval
+	from nlp_util import ptb, render_tree, nlp_eval
 except ImportError:
-	raise Exception("Remember to set up a symlink to the util directory")
+	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
 
 def mprint(text, out_dict, out_name):
 	all_stdout = True

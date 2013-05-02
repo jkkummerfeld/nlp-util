@@ -1,11 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vim: set ts=4 sw=4 noet:
 
 import sys
 from collections import defaultdict
 
 # TODO: Handle malformed input with trees that have random stuff instead of symbols
+
+# For chinese I found:
+###	leaf nodes split across lines:
+###			(blah
+###				 ))
+###	lone tags:
+###				CP (IP...
+###	the POS replacement leads to incorrect tagging for some punctuation
 
 word_to_word_mapping = {
 	'{': '-LCB-',
@@ -697,7 +704,7 @@ def generate_trees(source, max_sents=-1, return_empty=False, input_format='ptb',
 		source = open(source)
 	count = 0
 	while True:
-		tree = read_tree(source, return_empty, input_format)
+		tree = read_tree(source, return_empty, input_format, homogenise)
 		if tree == "Empty":
 			yield None
 			continue

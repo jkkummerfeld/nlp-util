@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.insert(0, "util")
 try:
-	import ptb, head_finder
+	from nlp_util import ptb, head_finder
 except ImportError:
-	raise Exception("Remember to set up a symlink to the util directory")
+	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
 
 def headed_tree(tree, head_map, depth=0):
 	ans = ''
