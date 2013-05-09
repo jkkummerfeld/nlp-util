@@ -51,23 +51,17 @@ class PSTree:
 	>>> print tree
 	(VP (VBD was) (VP (VBN named) (S (NP-SBJ (-NONE- -NONE-)) (NP-PRD (NP (DT a) (JJ nonexecutive) (NN director)) (PP (IN of) (NP (DT this) (JJ British) (JJ industrial) (NN conglomerate)))))))
 	'''
-	def __init__(self, text=None, label=DEFAULT_LABEL, span=(0, 0), parent=None, subtrees=None):
-		'''Create a node.  Note that 'text' can either be the word for this node,
-		or an entire tree, in which case the tree is created.'''
-		self.word = text
+	def __init__(self, word=None, label=DEFAULT_LABEL, span=(0, 0), parent=None, subtrees=None):
+		self.word = word
 		self.label = label
-		self.parent = parent
 		self.span = span
+		self.parent = parent
 		self.subtrees = []
 		if subtrees is not None:
 			self.subtrees = subtrees
-		if text is not None and label == DEFAULT_LABEL and span == (0, 0) and parent is None and subtrees is None:
-			self.word = None
-			self.set_by_text(text)
 	
 	def __iter__(self):
 		return TreeIterator(self)
-
 	
 	def clone(self):
 		ans = PSTree()
@@ -83,8 +77,12 @@ class PSTree:
 		return ans
 
 	def is_terminal(self):
-		'''Check if the node has no children.'''
+		'''Check if the tree has no children.'''
 		return len(self.subtrees) == 0
+
+	def is_trace(self, trace_label="-NONE-"):
+		'''Check if this tree is the end of a trace.'''
+		return self.label == trace_label
 
 	def root(self):
 		'''Follow parents until a node is reached that has no parent.'''
@@ -107,6 +105,7 @@ class PSTree:
 		return ans
 
 	def calculate_spans(self, left=0):
+		'''Update the spans for every node in this tree.'''
 		right = left
 		if self.is_terminal():
 			right += 1
@@ -116,6 +115,8 @@ class PSTree:
 		return right
 
 	def check_consistency(self):
+		'''Check that the parents and spans are consistent with the tree
+		structure.'''
 		ans = True
 		if len(self.subtrees) > 0:
 			for i in xrange(len(self.subtrees)):
@@ -133,6 +134,8 @@ class PSTree:
 		return ans
 
 	def production_list(self, ans=None):
+		'''Get a list of productions as:
+		(node label, node span, ((subtree1, end1), (subtree2, end2)...))'''
 		if ans is None:
 			ans = []
 		if len(self.subtrees) > 0:
@@ -143,6 +146,8 @@ class PSTree:
 		return ans
 
 	def word_yield(self, span=None, as_list=False):
+		'''Return the set of words at terminal nodes, either as a space separated
+		string, or as a list.'''
 		if self.is_terminal():
 			if span is None or span[0] <= self.span[0] < span[1]:
 				if self.word is None:
@@ -221,7 +226,11 @@ class PSTree:
 					return subtree.get_matching_node(node)
 			return None
 
-def tree_from_text(text):
+def tree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
+	'''Construct a PSTree from the provided string, which is assumed to represent
+	a tree with nested round brackets.  Nodes are labeled by the text between the
+	open bracket and the next space (possibly an empty string).  Words are the
+	text after that space and before the close bracket.'''
 	root = None
 	cur = None
 	pos = 0
@@ -237,6 +246,8 @@ def tree_from_text(text):
 		if char == '(':
 			word = word.strip()
 			if cur.label is DEFAULT_LABEL:
+				if len(word) == 0 and not allow_empty_labels:
+					raise Exception("Empty label found\n%s" % text)
 				cur.label = word
 				word = ''
 			if word != '':
@@ -248,6 +259,8 @@ def tree_from_text(text):
 		elif char == ')':
 			word = word.strip()
 			if word != '':
+				if len(word) == 0 and not allow_empty_words:
+					raise Exception("Empty word found\n%s" % text)
 				cur.word = word
 				word = ''
 				cur.span = (pos, pos + 1)
@@ -257,6 +270,8 @@ def tree_from_text(text):
 			cur = cur.parent
 		elif char == ' ':
 			if cur.label is DEFAULT_LABEL:
+				if len(word) == 0 and not allow_empty_labels:
+					raise Exception("Empty label found\n%s" % text)
 				cur.label = word
 				word = ''
 			else:
@@ -266,6 +281,87 @@ def tree_from_text(text):
 	if cur is not None:
 		raise Exception("Text did not include complete tree\n%s" % text)
 	return root
+
+def get_errors(test, gold, include_terminals=False):
+	ans = []
+
+	if include_terminals:
+		for tnode in test:
+			if tnode.is_terminal():
+				gnode = gold.get_nodes('lowest', tnode.span[0], tnode.span[1])
+				if gnode is not None and gnode.label != tnode.label:
+					ans.append(('extra', tnode.span, tnode.label, tnode))
+					ans.append(('missing', gnode.span, gnode.label, gnode))
+
+	gold_spans = gold.get_nodes('all')
+	test_spans = test.get_nodes('all')
+	gold_spans.sort()
+	test_spans.sort()
+	test_span_set = {}
+	for span in test_spans:
+		if span[2].is_terminal():
+			continue
+		key = (span[0], span[1], span[2].label) 
+		if key not in test_span_set:
+			test_span_set[key] = 0
+		test_span_set[key] += 1
+	gold_span_set = {}
+	for span in gold_spans:
+		if span[2].is_terminal():
+			continue
+		key = (span[0], span[1], span[2].label) 
+		if key not in gold_span_set:
+			gold_span_set[key] = 0
+		gold_span_set[key] += 1
+
+	# Extra
+	for span in test_spans:
+		key = (span[0], span[1], span[2].label)
+		if key in gold_span_set and gold_span_set[key] > 0:
+			gold_span_set[key] -= 1
+		else:
+			ans.append(('extra', span[2].span, span[2].label, span[2]))
+
+	# Missing and crossing
+	for span in gold_spans:
+		key = (span[0], span[1], span[2].label)
+		if key in test_span_set and test_span_set[key] > 0:
+			test_span_set[key] -= 1
+		else:
+			name = 'missing'
+			for tspan in test_span_set:
+				if tspan[0] < span[0] < tspan[1] < span[1]:
+					name = 'crossing'
+					break
+				if span[0] < tspan[0] < span[1] < tspan[1]:
+					name = 'crossing'
+					break
+			ans.append((name, span[2].span, span[2].label, span[2]))
+	return ans
+
+def counts_for_prf(test, gold, include_root=False, include_terminals=False):
+	tcount = 0
+	for node in test:
+		if node.is_terminal() and not include_terminals:
+			continue
+		if node.parent is None and not include_root:
+			continue
+		tcount += 1
+	gcount = 0
+	for node in gold:
+		if node.is_terminal() and not include_terminals:
+			continue
+		if node.parent is None and not include_root:
+			continue
+		gcount += 1
+	gcount = len(gold_spans)
+	match = tcount
+	errors = get_errors(test, gold, include_terminals)
+	for error in errors:
+		if error[3].parent is None or include_root:
+			if error[0] == 'extra':
+				match -= 1
+	return match, gold_count, test_count
 
 if __name__ == '__main__':
 	print "Running doctest"
