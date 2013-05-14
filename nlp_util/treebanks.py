@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
-from collections import defaultdict
 from pstree import *
 
 # TODO: Handle malformed input with trees that have random stuff instead of symbols
@@ -13,7 +11,7 @@ from pstree import *
 ###	lone tags:
 ###				CP (IP...
 
-tag_set = set(['S', 'SBAR', 'SBARQ', 'SINV', 'SQ', 'ADJP', 'ADVP', 'CONJP',
+ptb_tag_set = set(['S', 'SBAR', 'SBARQ', 'SINV', 'SQ', 'ADJP', 'ADVP', 'CONJP',
 'FRAG', 'INTJ', 'LST', 'NAC', 'NP', 'NX', 'PP', 'PRN', 'PRT', 'QP', 'RRC',
 'UCP', 'VP', 'WHADJP', 'WHADVP', 'WHNP', 'WHPP', 'X'])
 
@@ -36,19 +34,12 @@ word_to_POS_mapping = {
 bugfix_word_to_POS = {
 	'Wa': 'NNP'
 }
-###	the POS replacement leads to incorrect tagging for some punctuation
-def standardise_node(tree):
-	if tree.word in word_to_word_mapping:
-		tree.word = word_to_word_mapping[tree.word]
-	if tree.word in word_to_POS_mapping:
-		tree.label = word_to_POS_mapping[tree.word]
-	if tree.word in bugfix_word_to_POS:
-		tree.label = bugifx_word_to_POS[tree.word]
-
-def ptbtree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
-	tree = tree_from_text(text, allow_empty_labels, allow_empty_words)
-
+def ptb_cleaning(tree, in_place=True):
+	'''Clean up some bugs/odd things in the PTB, and standardise punctuation.'''
+	if not in_place:
+		tree = tree.clone()
 	for node in tree:
+		# In a small number of cases multiple POS tags were assigned
 		if '|' in node.label:
 			if 'ADVP' in node.label:
 				node.label = 'ADVP'
@@ -56,20 +47,26 @@ def ptbtree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
 				node.label = node.label.split('|')[0]
 		# Fix some issues with variation in output, and one error in the treebank
 		# for a word with a punctuation POS
-		standardise_node(node)
+		#	TODO: Look into the POS replacement leading to incorrect tagging for some
+		#	punctuation
+		if node.word in word_to_word_mapping:
+			node.word = word_to_word_mapping[node.word]
+		if node.word in word_to_POS_mapping:
+			node.label = word_to_POS_mapping[node.word]
+		if node.word in bugfix_word_to_POS:
+			node.label = bugifx_word_to_POS[node.word]
 	return tree
 
 def remove_trivial_unaries(tree, in_place=True):
 	'''Collapse A-over-A unary productions.
 
-	>>> tree = ptbtree_from_text("(ROOT (S (PP (PP (IN By) (NP (CD 1997))))))")
+	>>> tree = tree_from_text("(ROOT (S (PP (PP (IN By) (NP (CD 1997))))))")
 	>>> otree = remove_trivial_unaries(tree, False)
 	>>> print otree
 	(ROOT (S (PP (IN By) (NP (CD 1997)))))
 	>>> print tree
 	(ROOT (S (PP (PP (IN By) (NP (CD 1997))))))
 	>>> remove_trivial_unaries(tree)
-	>>> print tree
 	(ROOT (S (PP (IN By) (NP (CD 1997)))))
 	'''
 	if in_place:
@@ -79,29 +76,21 @@ def remove_trivial_unaries(tree, in_place=True):
 				subtree.parent = tree
 		for subtree in tree.subtrees:
 			remove_trivial_unaries(subtree, True)
-		return
 	else:
 		if len(tree.subtrees) == 1 and tree.label == tree.subtrees[0].label:
 			return remove_trivial_unaries(tree.subtrees[0], False)
 		subtrees = [remove_trivial_unaries(subtree, False) for subtree in tree.subtrees]
-		ans = PSTree(tree.word, tree.label, tree.span, None, subtrees)
+		tree = PSTree(tree.word, tree.label, tree.span, None, subtrees)
 		for subtree in subtrees:
-			subtree.parent = ans
-		return ans
+			subtree.parent = tree
+	return tree
 
-def remove_traces(tree, in_place=True):
-	'''Adjust the tree to remove traces.
-
-	>>> tree = ptbtree_from_text("(ROOT (S (PP (IN By) (NP (CD 1997))) (, ,) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed) (NP (-NONE- *-6))))) (. .)))")
-	>>> ctree = remove_traces(tree, False)
-	>>> print ctree
-	(ROOT (S (PP (IN By) (NP (CD 1997))) (, ,) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed)))) (. .)))
-	'''
-	if tree.is_trace():
+def remove_nodes(tree, filter_func, in_place=True):
+	if filter_func(tree):
 		return None
 	subtrees = []
 	for subtree in tree.subtrees:
-		ans = remove_traces(subtree, in_place)
+		ans = remove_nodes(subtree, filter_func, in_place)
 		if ans is not None:
 			subtrees.append(ans)
 			if in_place:
@@ -110,23 +99,29 @@ def remove_traces(tree, in_place=True):
 		return None
 	if in_place:
 		tree.subtrees = subtrees
-		return tree
 	else:
-		ans = PSTree(tree.word, tree.label, tree.span, None, subtrees)
-		return ans
+		tree = PSTree(tree.word, tree.label, tree.span, None, subtrees)
+	return tree
+
+def remove_traces(tree, in_place=True):
+	'''Adjust the tree to remove traces.
+
+	>>> tree = tree_from_text("(ROOT (S (PP (IN By) (NP (CD 1997))) (, ,) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed) (NP (-NONE- *-6))))) (. .)))")
+	>>> remove_traces(tree, False)
+	(ROOT (S (PP (IN By) (NP (CD 1997))) (, ,) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed)))) (. .)))
+	'''
+	return remove_nodes(tree, PSTree.is_trace, in_place)
 
 def remove_function_tags(tree, in_place=True):
 	'''Adjust the tree to remove function tags on labels.
 
-	>>> tree = ptbtree_from_text("(ROOT (S (NP-SBJ (NNP Ms.) (NNP Haag)) (VP (VBZ plays) (NP (NNP Elianti))) (. .)))")
-	>>> ctree = remove_function_tags(tree, False)
-	>>> print ctree
+	>>> tree = tree_from_text("(ROOT (S (NP-SBJ (NNP Ms.) (NNP Haag)) (VP (VBZ plays) (NP (NNP Elianti))) (. .)))")
+	>>> remove_function_tags(tree, False)
 	(ROOT (S (NP (NNP Ms.) (NNP Haag)) (VP (VBZ plays) (NP (NNP Elianti))) (. .)))
 
 	# don't remove brackets
-	>>> tree = ptbtree_from_text("(ROOT (S (NP-SBJ (`` ``) (NP-TTL (NNP Funny) (NNP Business)) ('' '') (PRN (-LRB- -LRB-) (NP (NNP Soho)) (, ,) (NP (CD 228) (NNS pages)) (, ,) (NP ($ $) (CD 17.95)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP-PRD (NP (NN anything)) (PP (RB but)))) (. .)))")
+	>>> tree = tree_from_text("(ROOT (S (NP-SBJ (`` ``) (NP-TTL (NNP Funny) (NNP Business)) ('' '') (PRN (-LRB- -LRB-) (NP (NNP Soho)) (, ,) (NP (CD 228) (NNS pages)) (, ,) (NP ($ $) (CD 17.95)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP-PRD (NP (NN anything)) (PP (RB but)))) (. .)))")
 	>>> remove_function_tags(tree)
-	>>> print tree
 	(ROOT (S (NP (`` ``) (NP (NNP Funny) (NNP Business)) ('' '') (PRN (-LRB- -LRB-) (NP (NNP Soho)) (, ,) (NP (CD 228) (NNS pages)) (, ,) (NP ($ $) (CD 17.95)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP (NP (NN anything)) (PP (RB but)))) (. .)))
 	'''
 	label = tree.label
@@ -137,106 +132,94 @@ def remove_function_tags(tree, in_place=True):
 		for subtree in tree.subtrees:
 			remove_function_tags(subtree, True)
 		tree.label = label
-		return
 	else:
 		subtrees = [remove_function_tags(subtree, False) for subtree in tree.subtrees]
-		ans = PSTree(tree.word, label, tree.span, None, subtrees)
+		tree = PSTree(tree.word, label, tree.span, None, subtrees)
 		for subtree in subtrees:
-			subtree.parent = ans
-		return ans
+			subtree.parent = tree
+	return tree
 
 # Applies rules to strip out the parts of the tree that are not used in the
 # standard evalb evaluation
-labels_to_ignore = set(["-NONE-",",",":","``","''","."])
-words_to_ignore = set([])
-#words_to_ignore = set(["'","`","''","``","--",":",";","-",",",".","...",".","?","!"])
-###POS_to_convert = {'PRT': 'ADVP'}
-###def apply_collins_rules(tree, left=0):
-###	'''Adjust the tree to remove parts not evaluated by the standard evalb
-###	config.
+def apply_collins_rules(tree, in_place=True):
+	'''Adjust the tree to remove parts not evaluated by the standard evalb
+	config.
 
-###	# cutting punctuation and -X parts of labels
-###	>>> tree = ptbtree_from_text("(ROOT (S (NP-SBJ (NNP Ms.) (NNP Haag) ) (VP (VBZ plays) (NP (NNP Elianti) )) (. .) ))")
-###	>>> ctree = apply_collins_rules(tree)
-###	>>> print ctree
-###	(ROOT (S (NP (NNP Ms.) (NNP Haag)) (VP (VBZ plays) (NP (NNP Elianti)))))
-###	>>> print ctree.word_yield()
-###	Ms. Haag plays Elianti
+	# cutting punctuation and -X parts of labels
+	>>> tree = tree_from_text("(ROOT (S (NP-SBJ (NNP Ms.) (NNP Haag) ) (VP (VBZ plays) (NP (NNP Elianti) )) (. .) ))")
+	>>> apply_collins_rules(tree)
+	(ROOT (S (NP (NNP Ms.) (NNP Haag)) (VP (VBZ plays) (NP (NNP Elianti)))))
+	>>> print tree.word_yield()
+	Ms. Haag plays Elianti
 
-###	# cutting nulls
-###	>>> tree = ptbtree_from_text("(ROOT (S (PP-TMP (IN By) (NP (CD 1997))) (, ,) (NP-SBJ-6 (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed) (NP (-NONE- *-6))))) (. .)))")
-###	>>> ctree = apply_collins_rules(tree)
-###	>>> print ctree
-###	(ROOT (S (PP (IN By) (NP (CD 1997))) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed))))))
+	# cutting nulls
+	>>> tree = tree_from_text("(ROOT (S (PP-TMP (IN By) (NP (CD 1997))) (, ,) (NP-SBJ-6 (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed) (NP (-NONE- *-6))))) (. .)))")
+	>>> apply_collins_rules(tree)
+	(ROOT (S (PP (IN By) (NP (CD 1997))) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed))))))
 
-###	# changing PRT to ADVP
-###	>>> tree = ptbtree_from_text("(ROOT (S (NP-SBJ-41 (DT That) (NN fund)) (VP (VBD was) (VP (VBN put) (NP (-NONE- *-41)) (PRT (RP together)) (PP (IN by) (NP-LGS (NP (NNP Blackstone) (NNP Group)) (, ,) (NP (DT a) (NNP New) (NNP York) (NN investment) (NN bank)))))) (. .)))")
-###	>>> ctree = apply_collins_rules(tree)
-###	>>> print ctree
-###	(ROOT (S (NP (DT That) (NN fund)) (VP (VBD was) (VP (VBN put) (ADVP (RP together)) (PP (IN by) (NP (NP (NNP Blackstone) (NNP Group)) (NP (DT a) (NNP New) (NNP York) (NN investment) (NN bank))))))))
+	# changing PRT to ADVP
+	>>> tree = tree_from_text("(ROOT (S (NP-SBJ-41 (DT That) (NN fund)) (VP (VBD was) (VP (VBN put) (NP (-NONE- *-41)) (PRT (RP together)) (PP (IN by) (NP-LGS (NP (NNP Blackstone) (NNP Group)) (, ,) (NP (DT a) (NNP New) (NNP York) (NN investment) (NN bank)))))) (. .)))")
+	>>> apply_collins_rules(tree)
+	(ROOT (S (NP (DT That) (NN fund)) (VP (VBD was) (VP (VBN put) (ADVP (RP together)) (PP (IN by) (NP (NP (NNP Blackstone) (NNP Group)) (NP (DT a) (NNP New) (NNP York) (NN investment) (NN bank))))))))
 
-###	# not removing brackets
-###	>>> tree = ptbtree_from_text("(ROOT (S (NP-SBJ (`` ``) (NP-TTL (NNP Funny) (NNP Business)) ('' '') (PRN (-LRB- -LRB-) (NP (NNP Soho)) (, ,) (NP (CD 228) (NNS pages)) (, ,) (NP ($ $) (CD 17.95) (-NONE- *U*)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP-PRD (NP (NN anything)) (PP (RB but) (NP (-NONE- *?*))))) (. .)))")
-###	>>> ctree = apply_collins_rules(tree)
-###	>>> print ctree
-###	(ROOT (S (NP (NP (NNP Funny) (NNP Business)) (PRN (-LRB- -LRB-) (NP (NNP Soho)) (NP (CD 228) (NNS pages)) (NP ($ $) (CD 17.95)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP (NP (NN anything)) (PP (RB but))))))
-###	'''
-###	if tree.label in labels_to_ignore:
-###		return None
-###	if tree.word in words_to_ignore:
-###		return None
-###	ans = PTB_Tree()
-###	ans.word = tree.word
-###	ans.label = tree.label
-###	ans.span = (left, -1)
-###	right = left
-###	if ans.word is not None:
-###		right = left + 1
-###		ans.span = (left, right)
-###	subtrees = []
-###	ans.subtrees = subtrees
-###	for subtree in tree.subtrees:
-###		nsubtree = apply_collins_rules(subtree, right)
-###		if nsubtree != None:
-###			subtrees.append(nsubtree)
-###			nsubtree.parent = ans
-###			right = nsubtree.span[1]
-###	ans.span = (left, right)
-###	if ans.word is None and len(ans.subtrees) == 0:
-###		return None
-###	if ans.label in POS_to_convert:
-###		ans.label = POS_to_convert[ans.label]
-###	try:
-###		if not ans.label[0] == '-':
-###			ans.label = ans.label.split('-')[0]
-###	except:
-###		raise Exception("Collins rule application issue:" + str(tree.get_root()))
-###	ans.label = ans.label.split('=')[0]
-###	return ans
+	# not removing brackets
+	>>> tree = tree_from_text("(ROOT (S (NP-SBJ (`` ``) (NP-TTL (NNP Funny) (NNP Business)) ('' '') (PRN (-LRB- -LRB-) (NP (NNP Soho)) (, ,) (NP (CD 228) (NNS pages)) (, ,) (NP ($ $) (CD 17.95) (-NONE- *U*)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP-PRD (NP (NN anything)) (PP (RB but) (NP (-NONE- *?*))))) (. .)))")
+	>>> apply_collins_rules(tree)
+	(ROOT (S (NP (NP (NNP Funny) (NNP Business)) (PRN (-LRB- -LRB-) (NP (NNP Soho)) (NP (CD 228) (NNS pages)) (NP ($ $) (CD 17.95)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP (NP (NN anything)) (PP (RB but))))))
+	'''
+	tree = tree if in_place else tree.clone()
+	remove_traces(tree, True)
+	remove_function_tags(tree, True)
+	ptb_cleaning(tree, True)
 
-###def homogenise_tree(tree):
-###	tree = tree.root()
-###	if tree.label != 'ROOT':
-###		while tree.label not in tag_set:
-###			if len(tree.subtrees) > 1:
-###				break
-###			elif len(tree.subtrees) == 0:
-###				tree.label = 'ROOT'
-###				return tree
-###			tree = tree.subtrees[0]
-###		if tree.label not in tag_set:
-###			tree.label = 'ROOT'
-###		else:
-###			root = PTB_Tree()
-###			root.subtrees.append(tree)
-###			root.label = 'ROOT'
-###			root.span = tree.span
-###			tree.parent = root
-###			tree = root
-###	return tree
+	# Remove Puncturation
+###	words_to_ignore = set(["'","`","''","``","--",":",";","-",",",".","...",".","?","!"])
+	labels_to_ignore = ["-NONE-",",",":","``","''","."]
+	remove_nodes(tree, lambda(t): t.label in labels_to_ignore, True)
+
+	# Set all PRTs to be ADVPs
+	POS_to_convert = {'PRT': 'ADVP'}
+	for node in tree:
+		if node.label in POS_to_convert:
+			node.label = POS_to_convert[node.label]
+	
+	return tree
+
+def homogenise_tree(tree, tag_set=ptb_tag_set):
+	'''Change the top of the tree to be of a consistent form.
+
+	>>> tree = tree_from_text("( (S (NP (NNP Example))))", True)
+	>>> homogenise_tree(tree)
+	(ROOT (S (NP (NNP Example))))
+	>>> tree = tree_from_text("( (ROOT (S (NP (NNP Example))) ) )", True)
+	>>> homogenise_tree(tree)
+	(ROOT (S (NP (NNP Example))))
+	>>> tree = tree_from_text("(S1 (S (NP (NNP Example))))")
+	>>> homogenise_tree(tree)
+	(ROOT (S (NP (NNP Example))))
+	'''
+	tree = tree.root()
+	if tree.label != 'ROOT':
+		while tree.label not in tag_set:
+			if len(tree.subtrees) > 1:
+				break
+			elif tree.is_terminal():
+				raise Exception("Tree has no labels in the tag set")
+			tree = tree.subtrees[0]
+		if tree.label not in tag_set:
+			tree.label = 'ROOT'
+		else:
+			root = PSTree(None, 'ROOT', tree.span, None, [])
+			root.subtrees.append(tree)
+			tree.parent = root
+			tree = root
+	return tree
 
 def ptb_read_tree(source, return_empty=False):
-	'''Read a single tree from the given file.
+	'''Read a single tree from the given PTB file.
+
+	The function reads a character at a time, stopping as soon as a tree can be
+	constructed, so multiple trees on a sinlge line are manageable.
 	
 	>>> from StringIO import StringIO
 	>>> file_text = """(ROOT (S
@@ -248,145 +231,127 @@ def ptb_read_tree(source, return_empty=False):
 	...         (NP (NN school) ))))
 	...   (. .) ))"""
 	>>> in_file = StringIO(file_text)
-	>>> tree = ptb_read_tree(in_file)
-	>>> print tree
+	>>> ptb_read_tree(in_file)
 	(ROOT (S (NP-SBJ (NNP Scotty)) (VP (VBD did) (RB not) (VP (VB go) (ADVP (RB back)) (PP (TO to) (NP (NN school))))) (. .)))'''
 	cur_text = ''
 	depth = 0
+	while True:
+		char = source.read(1)
+		if char == '':
+			return None
+			break
+		if char in '\n\t':
+			char = ' '
+		cur_text += char
+		if char == '(':
+			depth += 1
+		elif char == ')':
+			depth -= 1
+		if depth == 0:
+			if '()' in cur_text:
+				if return_empty:
+					return "Empty"
+				cur_text = ''
+				continue
+			if '(' in cur_text:
+				break
+
+	tree = tree_from_text(cur_text)
+	ptb_cleaning(tree)
+	return tree
+
+def conll_read_tree(source, return_empty=False):
+	'''Read a single tree from the given CoNLL Shared Task OntoNotes data file.
+	
+	>>> from StringIO import StringIO
+	>>> file_text = """#begin document (nw/wsj/00/wsj_0020)
+	... nw/wsj/00/wsj_0020          0          0       They        PRP (TOP_(S_(NP_*)          -          -          -          -          * (ARG1*)          *        (0)
+	... nw/wsj/00/wsj_0020          0          1       will         MD      (VP_*          -          -          -          -          * (ARGM-M OD*)          *          -
+	... nw/wsj/00/wsj_0020          0          2     remain         VB      (VP_*     remain         01          1          -          *       ( V*)          *          -
+	... nw/wsj/00/wsj_0020          0          3         on         IN      (PP_*          -          -          -          -          *     (AR G3*          *          -
+	... nw/wsj/00/wsj_0020          0          4          a         DT  (NP_(NP_*          -          -          -          -          * *     (ARG2*          -
+	... nw/wsj/00/wsj_0020          0          5      lower        JJR     (NML_*          -          -          -          -          * *          *          -
+	... nw/wsj/00/wsj_0020          0          6          -       HYPH          *          -          -          -          -          * *          *          -
+	... nw/wsj/00/wsj_0020          0          7   priority         NN         *)          -          -          -          -          * *          *          -
+	... nw/wsj/00/wsj_0020          0          8       list         NN         *)          -          -          1          -          * *         *)          -
+	... nw/wsj/00/wsj_0020          0          9       that        WDT (SBAR_(WHNP_*)          -          -          -          -          * *          *          -
+	... nw/wsj/00/wsj_0020          0         10   includes        VBZ   (S_(VP_*          -          -          1          -          * *       (V*)          -
+	... nw/wsj/00/wsj_0020          0         11         17         CD      (NP_*          -          -          -          - (CARDINAL) *     (ARG1*        (10
+	... nw/wsj/00/wsj_0020          0         12      other         JJ          *          -          -          -          -          * *          *          -
+	... nw/wsj/00/wsj_0020          0         13  countries        NNS  *))))))))          -          -          3          -          * *)         *)        10)
+	... nw/wsj/00/wsj_0020          0         14          .          .        *))          -          -          -          -          * *          *          -
+	... 
+	... """
+	>>> in_file = StringIO(file_text)
+	>>> tree = conll_read_tree(in_file)
+	>>> print tree
+	(TOP (S (NP (PRP They)) (VP (MD will) (VP (VB remain) (PP (IN on) (NP (NP (DT a) (NML (JJR lower) (HYPH -) (NN priority)) (NN list)) (SBAR (WHNP (WDT that)) (S (VP (VBZ includes) (NP (CD 17) (JJ other) (NNS countries))))))))) (. .)))'''
+	cur_text = []
 	while True:
 		line = source.readline()
 		# Check if we are out of input
 		if line == '':
 			return None
-
+		# strip whitespace and see if this is then end of the parse
 		line = line.strip()
-		for char in line:
-			cur_text += char
-			if char == '(':
-				depth += 1
-			elif char == ')':
-				depth -= 1
-			if depth == 0:
-				if '()' in cur_text:
-					if return_empty:
-						return "Empty"
-					cur_text = ''
-					continue
-				tree = ptbtree_from_text(cur_text)
-				return tree
-	return None
+		if line == '':
+			break
+		cur_text.append(line)
+	
+	text = ''
+	for line in cur_text:
+		if len(line) == 0 or line[0] == '#':
+			continue
+		line = line.split()
+		word = line[3]
+		pos = line[4]
+		tree = line[5]
+		tree = tree.split('*')
+		text += '%s(%s %s)%s' % (tree[0], pos, word, tree[1])
+	text = ' '.join(text.split('_')).strip()
+	return tree_from_text(text)
 
-###def read_tree(source, return_empty=False, input_format='ptb'):
-###	'''Read a single tree from the given file.
-###	
-###	>>> from StringIO import StringIO
-###	>>> file_text = """(ROOT (S
-###	...   (NP-SBJ (NNP Scotty) )
-###	...   (VP (VBD did) (RB not)
-###	...     (VP (VB go)
-###	...       (ADVP (RB back) )
-###	...       (PP (TO to)
-###	...         (NP (NN school) ))))
-###	...   (. .) ))"""
-###	>>> in_file = StringIO(file_text)
-###	>>> tree = read_tree(in_file)
-###	>>> print tree
-###	(ROOT (S (NP-SBJ (NNP Scotty)) (VP (VBD did) (RB not) (VP (VB go) (ADVP (RB back)) (PP (TO to) (NP (NN school))))) (. .)))'''
-###	cur_text = []
-###	depth = 0 if input_format == 'ptb' else -1
-###	while True:
-###		line = source.readline()
-###		# Check if we are out of input
-###		if line == '':
-###			return None
-###		# strip whitespace and only use if this contains something
-###		line = line.strip()
-###		if line == '':
-###			# Check for OntoNotes style input
-###			if input_format == 'ontonotes':
-###				text = ''
-###				for line in cur_text:
-###					if len(line) == 0 or line[0] == '#':
-###						continue
-###					line = line.split()
-###					word = line[3]
-###					pos = line[4]
-###					tree = line[5]
-###					tree = tree.split('*')
-###					text += '%s(%s %s)%s' % (tree[0], pos, word, tree[1])
-###				text = ' '.join(text.split('_')).strip()
-###				tree = PTB_Tree()
-###				tree = ptbtree_from_text(text)
-###				tree.label = 'ROOT'
-###				return tree
-###			elif return_empty:
-###				return "Empty"
-###			continue
-###		cur_text.append(line)
+def generate_trees(source, tree_reader=ptb_read_tree, max_sents=-1, return_empty=False):
+	'''Read trees from the given file (opening the file if only a string is given).
+	
+	>>> from StringIO import StringIO
+	>>> file_text = """(ROOT (S
+	...   (NP-SBJ (NNP Scotty) )
+	...   (VP (VBD did) (RB not)
+	...     (VP (VB go)
+	...       (ADVP (RB back) )
+	...       (PP (TO to)
+	...         (NP (NN school) ))))
+	...   (. .) ))
+	...
+	... (ROOT (S 
+	... 		(NP-SBJ (DT The) (NN bandit) )
+	... 		(VP (VBZ laughs) 
+	... 			(PP (IN in) 
+	... 				(NP (PRP$ his) (NN face) )))
+	... 		(. .) ))"""
+	>>> in_file = StringIO(file_text)
+	>>> for tree in generate_trees(in_file):
+	...   print tree
+	(ROOT (S (NP-SBJ (NNP Scotty)) (VP (VBD did) (RB not) (VP (VB go) (ADVP (RB back)) (PP (TO to) (NP (NN school))))) (. .)))
+	(ROOT (S (NP-SBJ (DT The) (NN bandit)) (VP (VBZ laughs) (PP (IN in) (NP (PRP$ his) (NN face)))) (. .)))'''
+	if type(source) == type(''):
+		source = open(source)
+	count = 0
+	while True:
+		tree = tree_reader(source, return_empty)
+		if tree == "Empty":
+			yield None
+			continue
+		if tree is None:
+			return
+		yield tree
+		count += 1
+		if count >= max_sents > 0:
+			return
 
-###		# Update depth
-###		if depth >= 0:
-###			for char in line:
-###				if char == '(':
-###					depth += 1
-###				elif char == ')':
-###					depth -= 1
-
-###		# PTB style - At depth 0 we have a complete tree
-###		if depth == 0:
-###			cur_text = ' '.join(cur_text)
-###			if '()' in cur_text:
-###				cur_text = []
-###				if return_empty:
-###					return "Empty"
-###				continue
-###			tree = ptbtree_from_text(cur_text)
-###			return tree
-###	return None
-
-###def generate_trees(source, max_sents=-1, return_empty=False, input_format='ptb', homogenise=True):
-###	'''Read trees from the given file (opening the file if only a string is given).
-
-###	This version is a generator, yielding one tree at a time.
-###	
-###	>>> from StringIO import StringIO
-###	>>> file_text = """(ROOT (S
-###	...   (NP-SBJ (NNP Scotty) )
-###	...   (VP (VBD did) (RB not)
-###	...     (VP (VB go)
-###	...       (ADVP (RB back) )
-###	...       (PP (TO to)
-###	...         (NP (NN school) ))))
-###	...   (. .) ))
-###	...
-###	... (ROOT (S 
-###	... 		(NP-SBJ (DT The) (NN bandit) )
-###	... 		(VP (VBZ laughs) 
-###	... 			(PP (IN in) 
-###	... 				(NP (PRP$ his) (NN face) )))
-###	... 		(. .) ))"""
-###	>>> in_file = StringIO(file_text)
-###	>>> for tree in generate_trees(in_file):
-###	...   print tree
-###	(ROOT (S (NP-SBJ (NNP Scotty)) (VP (VBD did) (RB not) (VP (VB go) (ADVP (RB back)) (PP (TO to) (NP (NN school))))) (. .)))
-###	(ROOT (S (NP-SBJ (DT The) (NN bandit)) (VP (VBZ laughs) (PP (IN in) (NP (PRP$ his) (NN face)))) (. .)))'''
-###	if type(source) == type(''):
-###		source = open(source)
-###	count = 0
-###	while True:
-###		tree = read_tree(source, return_empty, input_format)
-###		if tree == "Empty":
-###			yield None
-###			continue
-###		if tree is None:
-###			return
-###		yield tree
-###		count += 1
-###		if count >= max_sents > 0:
-###			return
-
-###def read_trees(source, max_sents=-1, return_empty=False, input_format='ptb'):
-###	return [tree for tree in generate_trees(source, max_sents, return_empty, input_format)]
+def read_trees(source, tree_reader=ptb_read_tree, max_sents=-1, return_empty=False):
+	return [tree for tree in generate_trees(source, tree_reader, max_sents, return_empty)]
 
 if __name__ == '__main__':
 	print "Running doctest"
