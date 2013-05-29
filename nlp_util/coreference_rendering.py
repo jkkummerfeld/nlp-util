@@ -56,7 +56,7 @@ def mention_text(text, mention, parses=None, heads=None, colour=None):
 	sentence, start, end = mention
 	head = None
 	if parses is not None and heads is not None and end - start > 1:
-		node = parses[sentence].get_lowest_span(start, end)
+		node = parses[sentence].get_nodes('lowest', start, end)
 		if node is not None:
 			head = head_finder.get_head(heads[sentence], node)
 	ans = []
@@ -114,7 +114,7 @@ def print_headless_mentions(out, parses, heads, mentions):
 	for mention in mentions:
 		sentence, start, end = mention
 		if end - start > 1:
-			node = parses[sentence].get_lowest_span(start, end)
+			node = parses[sentence].get_nodes('lowest', start, end)
 			if node is None:
 				print >> out, mention_text(text, mention)
 				print >> out, render_tree.text_tree(parses[sentence], False)
@@ -316,7 +316,7 @@ def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_h
 			continue
 		for i in xrange(mention[1], mention[2]):
 			word_colours[mention[0], i] = [True, False, False]
-		node = gold_parses[mention[0]].get_lowest_span(mention[1], mention[2])
+		node = gold_parses[mention[0]].get_nodes('lowest', mention[1], mention[2])
 		if node is not None:
 			head = head_finder.get_head(gold_heads[mention[0]], node)
 			word_colours[mention[0], head[0][0]][2] = True
@@ -327,7 +327,7 @@ def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_h
 			if (mention[0], i) not in word_colours:
 				word_colours[mention[0], i] = [False, False, False]
 			word_colours[mention[0], i][1] = True
-		node = gold_parses[mention[0]].get_lowest_span(mention[1], mention[2])
+		node = gold_parses[mention[0]].get_nodes('lowest', mention[1], mention[2])
 		if node is not None:
 			head = head_finder.get_head(gold_heads[mention[0]], node)
 			word_colours[mention[0], head[0][0]][2] = True

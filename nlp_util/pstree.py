@@ -4,26 +4,57 @@
 from collections import defaultdict
 
 DEFAULT_LABEL = 'label_not_set'
+TRACE_LABEL = '-NONE-'
 
 class TreeIterator:
-	'''Iterator for post-order traversal of a tree'''
-	def __init__(self, tree):
+	'''Iterator for traversal of a tree.
+	
+	PSTree uses pre-order traversal by default, but this supports post-order too, e.g.:
+	>>> tree = tree_from_text("(ROOT (S (NP-SBJ (NNP Ms.) (NNP Haag) ) (VP (VBZ plays) (NP (NNP Elianti) )) (. .) ))")
+	>>> for node in TreeIterator(tree, 'post'):
+	...   print node
+	(NNP Ms.)
+	(NNP Haag)
+	(NP-SBJ (NNP Ms.) (NNP Haag))
+	(VBZ plays)
+	(NNP Elianti)
+	(NP (NNP Elianti))
+	(VP (VBZ plays) (NP (NNP Elianti)))
+	(. .)
+	(S (NP-SBJ (NNP Ms.) (NNP Haag)) (VP (VBZ plays) (NP (NNP Elianti))) (. .))
+	(ROOT (S (NP-SBJ (NNP Ms.) (NNP Haag)) (VP (VBZ plays) (NP (NNP Elianti))) (. .)))
+	'''
+	def __init__(self, tree, order='pre'):
 		self.tree = tree
 		self.pos = [0]
+		self.order = order
+
+	def __iter__(self):
+		return self
 
 	def next(self):
-		if len(self.pos) == 0:
-			raise StopIteration
-		if self.pos[-1] < len(self.tree.subtrees):
-			self.tree = self.tree.subtrees[self.pos[-1]]
-			self.pos[-1] += 1
-			self.pos.append(0)
-			return self.next()
-		else:
-			ans = self.tree
-			self.tree = self.tree.parent
-			self.pos.pop()
-			return ans
+		while True:
+			if len(self.pos) == 0:
+				raise StopIteration
+
+			# For pre-order traversal, return nodes when first reached
+			ans = None
+			if self.order == 'pre' and self.pos[-1] == 0:
+				ans = self.tree
+
+			# Update internal state to point at the next node in the tree
+			if self.pos[-1] < len(self.tree.subtrees):
+				self.tree = self.tree.subtrees[self.pos[-1]]
+				self.pos[-1] += 1
+				self.pos.append(0)
+			else:
+				if self.order == 'post':
+					ans = self.tree
+				self.tree = self.tree.parent
+				self.pos.pop()
+
+			if ans is not None:
+				return ans
 
 class PSTree:
 	'''Phrase Structure Tree
@@ -46,10 +77,6 @@ class PSTree:
 	(VP (VBD was) (VP (VBN named) (S (NP-SBJ (-NONE- *-1)) (NP-PRD (NP (DT a) (JJ nonexecutive) (NN director)) (PP (IN of) (NP (DT this) (JJ British) (JJ industrial) (NN conglomerate)))))))
 	>>> tree.word_yield()
 	'was named *-1 a nonexecutive director of this British industrial conglomerate'
-	>>> trace = tree.get_nodes('lowest', 2, 3)
-	>>> trace.word = None
-	>>> print tree
-	(VP (VBD was) (VP (VBN named) (S (NP-SBJ (-NONE- -NONE-)) (NP-PRD (NP (DT a) (JJ nonexecutive) (NN director)) (PP (IN of) (NP (DT this) (JJ British) (JJ industrial) (NN conglomerate)))))))
 	'''
 	def __init__(self, word=None, label=DEFAULT_LABEL, span=(0, 0), parent=None, subtrees=None):
 		self.word = word
@@ -61,7 +88,7 @@ class PSTree:
 			self.subtrees = subtrees
 	
 	def __iter__(self):
-		return TreeIterator(self)
+		return TreeIterator(self, 'pre')
 	
 	def clone(self):
 		ans = PSTree()
@@ -80,9 +107,9 @@ class PSTree:
 		'''Check if the tree has no children.'''
 		return len(self.subtrees) == 0
 
-	def is_trace(self, trace_label="-NONE-"):
+	def is_trace(self):
 		'''Check if this tree is the end of a trace.'''
-		return self.label == trace_label
+		return self.label == TRACE_LABEL
 
 	def root(self):
 		'''Follow parents until a node is reached that has no parent.'''
@@ -91,16 +118,17 @@ class PSTree:
 		else:
 			return self
 
-	def __repr__(self, depth=0):
+	def __repr__(self):
 		'''Return a bracket notation style representation of the tree.'''
-		ans = '(' + self.label
-		if self.is_terminal():
-			if self.word is None:
-				ans += ' -NONE-'
-			else:
-				ans += ' ' + self.word
+		ans = '('
+		if self.is_trace():
+			ans += TRACE_LABEL + ' ' + self.word
+		elif self.is_terminal():
+			ans += self.label + ' ' + self.word
+		else:
+			ans += self.label
 		for subtree in self.subtrees:
-			ans += ' ' + subtree.__repr__(depth + 1)
+			ans += ' ' + subtree.__repr__()
 		ans += ')'
 		return ans
 

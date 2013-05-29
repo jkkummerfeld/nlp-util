@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+'''Various string representations of trees.'''
 
-import ptb
+import pstree
 
 # TODO:todo Fix handling of traces throughout
 
@@ -9,43 +10,27 @@ import ptb
 # http://mshang.ca/syntree/
 # http://www.yohasebe.com/rsyntaxtree/
 
-def text_words(tree, span=None, pos=0, return_tuple=False):
-	ans = ''
-	if tree.word is not None:
-		if span is None or span[0] <= pos < span[1]:
-			ans = tree.word
-		if return_tuple:
-			ans = (pos + 1, ans)
-	else:
-		text = []
-		for subtree in tree.subtrees:
-			pos, words = text_words(subtree, span, pos, True)
-			if words != '':
-				text.append(words)
-		ans = ' '.join(text)
-		if return_tuple:
-			ans = (pos, ans)
-	return ans
+def text_words(tree, show_traces=False):
+	'''Print just the words in the tree.'''
+	text = []
+	for node in tree:
+		if node.is_terminal():
+			if node.is_trace() and not show_traces:
+				continue
+			text.append(tree.word)
+	return ' '.join(text)
 
-def text_POS_tagged(tree, span=None, pos=0, return_tuple=False):
-	ans = ''
-	if tree.word is not None:
-		if span is None or span[0] <= pos < span[1]:
-			ans = tree.word + '|' + tree.label
-		if return_tuple:
-			ans = (pos + 1, ans)
-	else:
-		text = []
-		for subtree in tree.subtrees:
-			pos, words = text_POS_tagged(subtree, span, pos, True)
-			if words != '':
-				text.append(words)
-		ans = ' '.join(text)
-		if return_tuple:
-			ans = (pos, ans)
-	return ans
+def text_POS_tagged(tree, show_traces=False):
+	'''Print words and part of speech tags in the tree.'''
+	text = []
+	for node in tree:
+		if node.is_terminal():
+			if node.is_trace() and not show_traces:
+				continue
+			text.append(tree.word + '|' + tree.label)
+	return ' '.join(text)
 
-def text_tree(tree, single_line=True, depth=0):
+def text_tree(tree, single_line=True, show_traces=False, depth=0):
 	ans = ''
 	if not single_line and depth > 0:
 		ans = '\n' + depth * '\t'

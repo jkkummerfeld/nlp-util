@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys, os
-import ptb, head_finder, render_tree
+import pstree, treebanks, head_finder, render_tree
 from collections import defaultdict
 from StringIO import StringIO
 import re
@@ -10,7 +10,7 @@ import glob, fnmatch
 
 def read_conll_parses(lines):
 	in_file = StringIO(''.join(lines))
-	return ptb.read_trees(in_file, input_format='ontonotes')
+	return treebanks.read_trees(in_file, treebanks.conll_read_tree)
 
 def read_conll_text(lines):
 	text = [[]]

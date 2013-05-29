@@ -14,10 +14,10 @@ import head_finder
 
 def mention_head(mention, text, parses, heads, default_last=True):
 	sentence, start, end = mention
-	node = parses[sentence].get_lowest_span(start, end)
+	node = parses[sentence].get_nodes('lowest', start, end)
 	if node is None:
 		if default_last:
-			node = parses[sentence].get_lowest_span(end - 1, end)
+			node = parses[sentence].get_nodes('lowest', end - 1, end)
 		else:
 			return None
 	return head_finder.get_head(heads[sentence], node)
