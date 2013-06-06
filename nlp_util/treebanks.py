@@ -13,7 +13,7 @@ from pstree import *
 
 ptb_tag_set = set(['S', 'SBAR', 'SBARQ', 'SINV', 'SQ', 'ADJP', 'ADVP', 'CONJP',
 'FRAG', 'INTJ', 'LST', 'NAC', 'NP', 'NX', 'PP', 'PRN', 'PRT', 'QP', 'RRC',
-'UCP', 'VP', 'WHADJP', 'WHADVP', 'WHNP', 'WHPP', 'X'])
+'UCP', 'VP', 'WHADJP', 'WHADVP', 'WHNP', 'WHPP', 'X', 'NML'])
 
 word_to_word_mapping = {
 	'{': '-LCB-',
@@ -112,6 +112,15 @@ def remove_traces(tree, in_place=True):
 	'''
 	return remove_nodes(tree, PSTree.is_trace, in_place)
 
+def split_label_type_and_function(label):
+	parts = label.split('=')
+	if len(label) > 0 and label[0] != '-':
+		cur = parts
+		parts = []
+		for part in cur:
+			parts += part.split('-')
+	return parts
+
 def remove_function_tags(tree, in_place=True):
 	'''Adjust the tree to remove function tags on labels.
 
@@ -124,10 +133,7 @@ def remove_function_tags(tree, in_place=True):
 	>>> remove_function_tags(tree)
 	(ROOT (S (NP (`` ``) (NP (NNP Funny) (NNP Business)) ('' '') (PRN (-LRB- -LRB-) (NP (NNP Soho)) (, ,) (NP (CD 228) (NNS pages)) (, ,) (NP ($ $) (CD 17.95)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP (NP (NN anything)) (PP (RB but)))) (. .)))
 	'''
-	label = tree.label
-	if len(label) > 0 and label[0] != '-':
-		label = label.split('-')[0]
-	label = label.split('=')[0]
+	label = split_label_type_and_function(tree.label)[0]
 	if in_place:
 		for subtree in tree.subtrees:
 			remove_function_tags(subtree, True)
@@ -198,15 +204,16 @@ def homogenise_tree(tree, tag_set=ptb_tag_set):
 	>>> homogenise_tree(tree)
 	(ROOT (S (NP (NNP Example))))
 	'''
+	orig = tree
 	tree = tree.root()
 	if tree.label != 'ROOT':
-		while tree.label not in tag_set:
+		while split_label_type_and_function(tree.label)[0] not in tag_set:
 			if len(tree.subtrees) > 1:
 				break
 			elif tree.is_terminal():
-				raise Exception("Tree has no labels in the tag set")
+				raise Exception("Tree has no labels in the tag set\n%s" % orig.__repr__())
 			tree = tree.subtrees[0]
-		if tree.label not in tag_set:
+		if split_label_type_and_function(tree.label)[0] not in tag_set:
 			tree.label = 'ROOT'
 		else:
 			root = PSTree(None, 'ROOT', tree.span, None, [])
@@ -215,7 +222,7 @@ def homogenise_tree(tree, tag_set=ptb_tag_set):
 			tree = root
 	return tree
 
-def ptb_read_tree(source, return_empty=False):
+def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False):
 	'''Read a single tree from the given PTB file.
 
 	The function reads a character at a time, stopping as soon as a tree can be
@@ -256,7 +263,7 @@ def ptb_read_tree(source, return_empty=False):
 			if '(' in cur_text:
 				break
 
-	tree = tree_from_text(cur_text)
+	tree = tree_from_text(cur_text, allow_empty_labels, allow_empty_words)
 	ptb_cleaning(tree)
 	return tree
 
@@ -311,7 +318,7 @@ def conll_read_tree(source, return_empty=False):
 	text = ' '.join(text.split('_')).strip()
 	return tree_from_text(text)
 
-def generate_trees(source, tree_reader=ptb_read_tree, max_sents=-1, return_empty=False):
+def generate_trees(source, tree_reader=ptb_read_tree, max_sents=-1, return_empty=False, allow_empty_labels=False, allow_empty_words=False):
 	'''Read trees from the given file (opening the file if only a string is given).
 	
 	>>> from StringIO import StringIO
@@ -339,7 +346,7 @@ def generate_trees(source, tree_reader=ptb_read_tree, max_sents=-1, return_empty
 		source = open(source)
 	count = 0
 	while True:
-		tree = tree_reader(source, return_empty)
+		tree = tree_reader(source, return_empty, allow_empty_labels, allow_empty_words)
 		if tree == "Empty":
 			yield None
 			continue

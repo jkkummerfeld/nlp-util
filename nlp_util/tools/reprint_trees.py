@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-try:
-	from nlp_util import ptb, render_tree
-except ImportError:
-	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
+from nlp_util import pstree, treebanks, render_tree
 
 #TODO Add the ability to print multiple outputs in a single run, to dfferent files
 
@@ -53,12 +50,12 @@ def get_args():
 		i += 1
 	return args
 
-def main():
+if __name__ == '__main__':
 	if len(sys.argv) == 1:
 		print "Read trees from stdin and print them to stdout."
 		print "Options:"
 		print "  -(i)nput = (p)enn treebank | (c)onll or OntoNotes"
-		print "  -(f)ormat = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged"
+		print "  -(o)utput = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged"
 		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top"
 		print "  -(g)old = <gold filenmae>"
 		print "e.g. %s -f t -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
@@ -66,16 +63,15 @@ def main():
 
 	args = get_args()
 	in_format = args["i"] == 'p' if 'i' in args else True
-	out_format = args["f"] if 'f' in args else 's'
+	out_format = args["o"] if 'o' in args else 's'
 	edits = args["e"] if 'e' in args else ''
-	homogenise_top = 'h' in edits
 	gold_file = args["g"] if 'g' in args else None
 	if gold_file is not None:
-		gold_file = ptb.generate_trees(gold_file)
+		gold_file = treebanks.generate_trees(gold_file, allow_empty_labels=True)
 
 	if out_format == 't':
 		print tex_start
-	for tree in ptb.generate_trees(sys.stdin, return_empty=True, homogenise=homogenise_top):
+	for tree in treebanks.generate_trees(sys.stdin, return_empty=True, allow_empty_labels=True):
 		gold_tree = None
 		if gold_file is not None:
 			gold_tree = gold_file.next()
@@ -85,18 +81,22 @@ def main():
 			continue
 
 		# Apply edits
+		if 'h' in edits:
+			tree = treebanks.homogenise_tree(tree)
+			if gold_tree is not None:
+				gold_tree = treebanks.homogenise_tree(gold_tree)
 		if 't' in edits:
-			tree = ptb.remove_traces(tree)
+			treebanks.remove_traces(tree)
 			if gold_tree is not None:
-				gold_tree = ptb.remove_traces(gold_tree)
+				treebanks.remove_traces(gold_tree)
 		if 'f' in edits:
-			tree = ptb.remove_function_tags(tree)
+			treebanks.remove_function_tags(tree)
 			if gold_tree is not None:
-				gold_tree = ptb.remove_function_tags(gold_tree)
+				treebanks.remove_function_tags(gold_tree)
 		if 'c' in edits:
-			tree = ptb.apply_collins_rules(tree)
+			treebanks.apply_collins_rules(tree)
 			if gold_tree is not None:
-				gold_tree = ptb.apply_collins_rules(gold_tree)
+				treebanks.apply_collins_rules(gold_tree)
 
 		# Print tree
 		if out_format == 's':
@@ -127,5 +127,3 @@ def main():
 	if out_format == 't':
 		print '\\end{document}'
 
-if __name__ == '__main__':
-    main()

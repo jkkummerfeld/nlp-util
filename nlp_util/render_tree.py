@@ -17,7 +17,7 @@ def text_words(tree, show_traces=False):
 		if node.is_terminal():
 			if node.is_trace() and not show_traces:
 				continue
-			text.append(tree.word)
+			text.append(node.word)
 	return ' '.join(text)
 
 def text_POS_tagged(tree, show_traces=False):
