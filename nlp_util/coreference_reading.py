@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
 
 import sys, os
 import pstree, treebanks, head_finder, render_tree
@@ -59,13 +60,16 @@ def read_conll_coref(lines):
 
 	sentence = 0
 	word = 0
+	line_no = 0
 	for line in lines:
+		line_no += 1
 		if len(line) > 0 and line[0] =='#':
 			continue
 		line = line.strip()
 		if len(line) == 0:
 			sentence += 1
 			word = 0
+			unmatched_mentions = defaultdict(lambda: [])
 			continue
 		fields = line.strip().split()
 		for triple in re.findall(regex, fields[-1]):
@@ -80,11 +84,17 @@ def read_conll_coref(lines):
 				else:
 					val = int(triple[2][:-1])
 					if (sentence, val) not in unmatched_mentions:
-						print lines
-						print triple
-						print fields
-						print line
-						raise Exception("Ending mention with no start: " + str(val))
+###						print ''.join(lines[:20])
+###						print triple
+###						print fields
+###						print line
+###						print line_no, len(lines)
+###						raise Exception("Ending mention with no start: " + str(val))
+						print >> sys.stderr, "Ignoring a mention with no start", str(val), line.strip(), line_no
+						continue
+					if len(unmatched_mentions[(sentence, val)]) == 0:
+						print >> sys.stderr, "No other start available", str(val), line.strip(), line_no
+						continue
 					start = unmatched_mentions[(sentence, val)].pop()
 				end = word + 1
 				if (sentence, start, end) in mentions:
@@ -95,7 +105,8 @@ def read_conll_coref(lines):
 		word += 1
 	for key in unmatched_mentions:
 		if len(unmatched_mentions[key]) > 0:
-			raise Exception("Mention started, but did not end " + str(unmatched_mentions[key]))
+			print >> sys.stderr, "Mention started, but did not end ", str(unmatched_mentions[key])
+###			raise Exception("Mention started, but did not end " + str(unmatched_mentions[key]))
 	return mentions, clusters
 
 def read_stanford_coref(filename, gold_text):
@@ -444,14 +455,14 @@ def read_conll_doc(filename, ans=None, rtext=True, rparses=True, rheads=True, rc
 	cur = []
 	keys = None
 	for line in open(filename):
-		if len(line) > 0 and line[0] == '#':
+		if len(line) > 0 and line.startswith('#begin') or line.startswith('#end'):
 			if 'begin' in line:
 				desc = line.split()
 				location = desc[2].strip('();')
 				keys = (location, desc[-1])
 			if len(cur) > 0:
 				if keys is None:
-					print >> sys.stderr, "Error reading conll file - invalid #begin statement"
+					print >> sys.stderr, "Error reading conll file - invalid #begin statemen\n", line
 				else:
 					info = {}
 					if rtext:
@@ -509,6 +520,99 @@ def read_conll_all(dir_prefix, suffix="auto_conll"):
 		for filename in fnmatch.filter(filenames, '*' + suffix):
 			ans = read_conll_doc(os.path.join(root, filename), ans)
 	return ans
+
+def read_conll_scorer_output(text):
+	'''
+	
+	>>> text = """version: 1.07
+	... 
+	... METRIC muc:
+	... 
+	... ====== TOTALS =======
+	... Identification of Mentions: Recall: (10049 / 14291) 70.31%	Precision: (10049 / 12968) 77.49%	F1: 73.72%
+	... --------------------------------------------------------------------------
+	... Coreference: Recall: (6891 / 10539) 65.38%	Precision: (6891 / 9671) 71.25%	F1: 68.19%
+	... --------------------------------------------------------------------------
+	... 
+	... METRIC bcub:
+	... 
+	... ====== TOTALS =======
+	... Identification of Mentions: Recall: (10049 / 14291) 70.31%	Precision: (10049 / 12968) 77.49%	F1: 73.72%
+	... --------------------------------------------------------------------------
+	... Coreference: Recall: (9445.16162068698 / 14291) 66.09%	Precision: (13366.8103055043 / 17210) 77.66%	F1: 71.41%
+	... --------------------------------------------------------------------------
+	... 
+	... METRIC ceafm:
+	... 
+	... ====== TOTALS =======
+	... Identification of Mentions: Recall: (10049 / 14291) 70.31%	Precision: (10049 / 12968) 77.49%	F1: 73.72%
+	... --------------------------------------------------------------------------
+	... Coreference: Recall: (10046 / 14291) 70.29%	Precision: (11103 / 17210) 64.51%	F1: 67.28%
+	... --------------------------------------------------------------------------
+	... 
+	... METRIC ceafe:
+	... 
+	... ====== TOTALS =======
+	... Identification of Mentions: Recall: (10049 / 14291) 70.31%	Precision: (10049 / 12968) 77.49%	F1: 73.72%
+	... --------------------------------------------------------------------------
+	... Coreference: Recall: (3490.14880751078 / 6671) 52.31%	Precision: (3490.14880751078 / 7539) 46.29%	F1: 49.12%
+	... --------------------------------------------------------------------------
+	... 
+	... METRIC blanc:
+	... 
+	... ====== TOTALS =======
+	... Identification of Mentions: Recall: (10049 / 14291) 70.31%	Precision: (10049 / 12968) 77.49%	F1: 73.72%
+	... --------------------------------------------------------------------------
+	... 
+	... Coreference:
+	... Coreference links: Recall: (33214 / 54427) 61.02%	Precision: (33214 / 51699) 64.24%	F1: 62.59%
+	... --------------------------------------------------------------------------
+	... Non-coreference links: Recall: (785075 / 803560) 97.69%	Precision: (785075 / 806288) 97.36%	F1: 97.53%
+	... --------------------------------------------------------------------------
+	... BLANC: Recall: (0.793622353566206 / 1) 79.36%	Precision: (0.80807005307929 / 1) 80.8%	F1: 80.06%
+	... --------------------------------------------------------------------------"""
+	>>> results = read_conll_scorer_output(text)
+	>>> for metric in results:
+	...   print metric, results[metric]
+	bcub [77.66, 66.09, 71.41]
+	ceafm [64.51, 70.29, 67.28]
+	muc [71.25, 65.38, 68.19]
+	mentions [77.49, 70.31, 73.72]
+	ceafe [46.29, 52.31, 49.12]
+	blanc [80.8, 79.36, 80.06]
+	'''
+	metric = None
+	totals = False
+	results = defaultdict(lambda: [])
+	for line in text.split('\n'):
+		fields = line.strip().split()
+		if 'METRIC' in line:
+			metric = line.strip().split()[1][:-1]
+		elif 'TOTALS' in line:
+			totals = True
+		elif 'Identification of Mentions' in line and totals:
+			recall = float(fields[4][1:]) / float(fields[6][:-1])
+			precision = float(fields[9][1:]) / float(fields[11][:-1])
+			fscore = 0.0
+			if precision + recall > 0:
+				fscore = 2 * precision * recall / (precision + recall)
+			results['mentions'] = [precision, recall, fscore]
+		elif totals and (('Coreference' in line and metric != 'blanc') or 'BLANC:' in line):
+			recall = float(fields[2][1:]) / float(fields[4][:-1])
+			precision = float(fields[7][1:]) / float(fields[9][:-1])
+			fscore = 0.0
+			if precision + recall > 0:
+				fscore = 2 * precision * recall / (precision + recall)
+			results[metric] = [precision, recall, fscore]
+		elif line.strip() == '' and totals:
+			if len(results[metric]) == 3:
+				totals = False
+	if 'ceafe' in results and 'muc' in results and 'bcub' in results:
+		results['conll'] = [0, 0, 0]
+		for metric in ['muc', 'bcub', 'ceafe']:
+			for i in xrange(3):
+				results['conll'][i] += results[metric][i] / 3.0
+	return results
 
 if __name__ == "__main__":
 	print "Running doctest"

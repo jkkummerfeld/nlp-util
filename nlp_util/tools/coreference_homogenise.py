@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
 #!/usr/bin/env python
 '''Converts output from a range of coref systems into the style of the 2011
 CoNLL Shared Task.
@@ -52,6 +54,12 @@ def read_cherrypicker(auto_src, gold_src):
 	call = coreference_reading.read_cherrypicker_coref
 	return multifile_process(path, call)
 
+def read_conll(auto_src, gold_src):
+	'''CoNLL style output, last field is the relevant one.'''
+	auto = coreference_reading.read_conll_doc(auto_src, None, False, False, False, True, False)
+	gold = coreference_reading.read_conll_matching_files(auto, gold_src)
+	return auto, gold
+
 def read_ims(auto_src, gold_src):
 	'''IMS produces CoNLL style output, but with all fields. This will read it as normal.'''
 	auto = coreference_reading.read_conll_doc(auto_src, None, True, False, False, True)
@@ -100,6 +108,7 @@ if __name__ == '__main__':
 	auto, gold = {
 		'bart': read_bart,
 		'cherrypicker': read_cherrypicker,
+		'conll': read_conll,
 		'ims': read_ims,
 		'opennlp': read_opennlp,
 		'reconcile': read_reconcile,
@@ -117,7 +126,7 @@ if __name__ == '__main__':
 					info += '\n' + gold[doc][part]['text'][mention[0]]
 					raise Exception(info)
 
-	coreference_rendering.print_conll_style(auto, out)
+	coreference_rendering.print_conll_style(auto, gold, out)
 
 	out.close()
 	log.close()

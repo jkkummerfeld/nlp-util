@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
 
 import sys
 try:

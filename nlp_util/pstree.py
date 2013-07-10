@@ -86,6 +86,8 @@ class PSTree:
 		self.subtrees = []
 		if subtrees is not None:
 			self.subtrees = subtrees
+			for subtree in subtrees:
+				subtree.parent = self
 	
 	def __iter__(self):
 		return TreeIterator(self, 'pre')
@@ -209,7 +211,7 @@ class PSTree:
 		node_dict[(self.label, self.span[0], self.span[1])].append(depth)
 		return node_dict
 
-	def get_nodes(self, request='lowest', start=-1, end=-1, node_list=None):
+	def get_nodes(self, request='all', start=-1, end=-1, node_list=None):
 		'''Get the node(s) that have a given span.  Unspecified endpoints are
 		treated as wildcards.  The request can be 'lowest', 'highest', or 'all'.'''
 		if request not in ['highest', 'lowest', 'all']:
@@ -239,7 +241,35 @@ class PSTree:
 				elif request == 'all':
 					node_list.append((self.span[0], self.span[1], self))
 					return node_list
-		return None
+		if request == 'all':
+			return node_list
+		else:
+			return None
+
+	def get_spanning_nodes(self, start, end, node_list=None):
+		return_ans = False
+		if node_list is None:
+			return_ans = True
+			node_list = []
+
+		if self.span[0] == start and self.span[1] <= end:
+			node_list.append(self)
+			start = self.span[1]
+		else:
+			for subtree in self.subtrees:
+				if subtree.span[1] < start:
+					continue
+				start = subtree.get_spanning_nodes(start, end, node_list)
+				if start == end:
+					break
+
+		if return_ans:
+			if start == end:
+				return node_list
+			else:
+				return None
+		else:
+			return start
 
 	def get_matching_node(self, node):
 		'''Find a node with the same span, label and number of children.'''
@@ -313,34 +343,44 @@ def tree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
 def get_errors(test, gold, include_terminals=False):
 	ans = []
 
+	# Different POS
 	if include_terminals:
 		for tnode in test:
-			if tnode.is_terminal():
-				gnode = gold.get_nodes('lowest', tnode.span[0], tnode.span[1])
-				if gnode is not None and gnode.label != tnode.label:
-					ans.append(('extra', tnode.span, tnode.label, tnode))
-					ans.append(('missing', gnode.span, gnode.label, gnode))
+			if tnode.word is not None:
+				for gnode in gold:
+					if gnode.word is not None and gnode.span == tnode.span:
+						if gnode.label != tnode.label:
+							ans.append(('diff POS', tnode.span, tnode.label, tnode, gnode.label))
 
-	gold_spans = gold.get_nodes('all')
 	test_spans = test.get_nodes('all')
-	gold_spans.sort()
 	test_spans.sort()
 	test_span_set = {}
+	to_remove = []
 	for span in test_spans:
 		if span[2].is_terminal():
+			to_remove.append(span)
 			continue
 		key = (span[0], span[1], span[2].label) 
 		if key not in test_span_set:
 			test_span_set[key] = 0
 		test_span_set[key] += 1
+	for span in to_remove:
+		test_spans.remove(span)
+
+	gold_spans = gold.get_nodes('all')
+	gold_spans.sort()
 	gold_span_set = {}
+	to_remove = []
 	for span in gold_spans:
 		if span[2].is_terminal():
+			to_remove.append(span)
 			continue
 		key = (span[0], span[1], span[2].label) 
 		if key not in gold_span_set:
 			gold_span_set[key] = 0
 		gold_span_set[key] += 1
+	for span in to_remove:
+		gold_spans.remove(span)
 
 	# Extra
 	for span in test_spans:
@@ -349,6 +389,7 @@ def get_errors(test, gold, include_terminals=False):
 			gold_span_set[key] -= 1
 		else:
 			ans.append(('extra', span[2].span, span[2].label, span[2]))
+###			print ans[-1]
 
 	# Missing and crossing
 	for span in gold_spans:

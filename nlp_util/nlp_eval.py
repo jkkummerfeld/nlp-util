@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
 
-def get_errors(self, gold):
+def parse_errors(self, gold):
 	ans = []
 	gold_spans = gold.span_list()
 	test_spans = self.span_list()
@@ -50,6 +51,19 @@ def get_errors(self, gold):
 		else:
 			test_span_set[key] -= 1
 	return ans
+
+def coreference_cluster_match(gold, auto):
+	if len(gold) != len(auto):
+		return False
+	for gcluster in gold:
+		matched = False
+		for acluster in auto:
+			if acluster == gcluster:
+				matched = True
+				break
+		if not matched:
+			return False
+	return True
 
 def calc_prf(match, gold, test):
 	'''Calculate Precision, Recall and F-Score, with:

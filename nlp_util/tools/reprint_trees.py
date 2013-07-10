@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
 
 import sys
 from nlp_util import pstree, treebanks, render_tree
@@ -56,7 +58,7 @@ if __name__ == '__main__':
 		print "Options:"
 		print "  -(i)nput = (p)enn treebank | (c)onll or OntoNotes"
 		print "  -(o)utput = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged"
-		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top"
+		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries"
 		print "  -(g)old = <gold filenmae>"
 		print "e.g. %s -f t -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
 		sys.exit(0)
@@ -97,6 +99,11 @@ if __name__ == '__main__':
 			treebanks.apply_collins_rules(tree)
 			if gold_tree is not None:
 				treebanks.apply_collins_rules(gold_tree)
+		if 'u' in edits:
+			# This must be after all other deletion to work properly
+			treebanks.remove_trivial_unaries(tree)
+			if gold_tree is not None:
+				treebanks.remove_trivial_unaries(gold_tree)
 
 		# Print tree
 		if out_format == 's':

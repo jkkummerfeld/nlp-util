@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
 
 from pstree import *
 
@@ -60,12 +61,12 @@ def ptb_cleaning(tree, in_place=True):
 def remove_trivial_unaries(tree, in_place=True):
 	'''Collapse A-over-A unary productions.
 
-	>>> tree = tree_from_text("(ROOT (S (PP (PP (IN By) (NP (CD 1997))))))")
+	>>> tree = tree_from_text("(ROOT (S (S (PP (PP (PP (IN By) (NP (CD 1997))))))))")
 	>>> otree = remove_trivial_unaries(tree, False)
 	>>> print otree
 	(ROOT (S (PP (IN By) (NP (CD 1997)))))
 	>>> print tree
-	(ROOT (S (PP (PP (IN By) (NP (CD 1997))))))
+	(ROOT (S (S (PP (PP (PP (IN By) (NP (CD 1997))))))))
 	>>> remove_trivial_unaries(tree)
 	(ROOT (S (PP (IN By) (NP (CD 1997)))))
 	'''
@@ -74,8 +75,10 @@ def remove_trivial_unaries(tree, in_place=True):
 			tree.subtrees = tree.subtrees[0].subtrees
 			for subtree in tree.subtrees:
 				subtree.parent = tree
-		for subtree in tree.subtrees:
-			remove_trivial_unaries(subtree, True)
+			remove_trivial_unaries(tree, True)
+		else:
+			for subtree in tree.subtrees:
+				remove_trivial_unaries(subtree, True)
 	else:
 		if len(tree.subtrees) == 1 and tree.label == tree.subtrees[0].label:
 			return remove_trivial_unaries(tree.subtrees[0], False)
@@ -85,20 +88,25 @@ def remove_trivial_unaries(tree, in_place=True):
 			subtree.parent = tree
 	return tree
 
-def remove_nodes(tree, filter_func, in_place=True):
-	if filter_func(tree):
+def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init_call=True):
+	if filter_func(tree) and not preserve_subtrees:
 		return None
 	subtrees = []
 	for subtree in tree.subtrees:
-		ans = remove_nodes(subtree, filter_func, in_place)
+		ans = remove_nodes(subtree, filter_func, in_place, preserve_subtrees, False)
 		if ans is not None:
-			subtrees.append(ans)
-			if in_place:
-				ans.parent = tree
+			if type(ans) == type([]):
+				subtrees += ans
+			else:
+				subtrees.append(ans)
 	if len(subtrees) == 0 and (not tree.is_terminal()):
 		return None
+	if filter_func(tree) and preserve_subtrees:
+		return subtrees
 	if in_place:
 		tree.subtrees = subtrees
+		for subtree in subtrees:
+			subtree.parent = tree
 	else:
 		tree = PSTree(tree.word, tree.label, tree.span, None, subtrees)
 	return tree
@@ -267,7 +275,7 @@ def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
 	ptb_cleaning(tree)
 	return tree
 
-def conll_read_tree(source, return_empty=False):
+def conll_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False):
 	'''Read a single tree from the given CoNLL Shared Task OntoNotes data file.
 	
 	>>> from StringIO import StringIO
@@ -315,7 +323,6 @@ def conll_read_tree(source, return_empty=False):
 		tree = line[5]
 		tree = tree.split('*')
 		text += '%s(%s %s)%s' % (tree[0], pos, word, tree[1])
-	text = ' '.join(text.split('_')).strip()
 	return tree_from_text(text)
 
 def generate_trees(source, tree_reader=ptb_read_tree, max_sents=-1, return_empty=False, allow_empty_labels=False, allow_empty_words=False):

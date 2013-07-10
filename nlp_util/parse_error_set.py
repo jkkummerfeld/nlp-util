@@ -1,11 +1,20 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
+
+import pstree
 
 class Parse_Error_Set:
-	def __init__(self):
+	def __init__(self, gold=None, test=None):
 		self.missing = []
 		self.crossing = []
 		self.extra = []
 		self.spans = {}
+
+		if gold is not None and test is not None:
+			errors = pstree.get_errors(test, gold)
+			for error in errors:
+				self.add_error(error[0], error[1], error[2], error[3])
 	
 	def add_error(self, etype, span, label, node):
 		error = (etype, span, label, node)

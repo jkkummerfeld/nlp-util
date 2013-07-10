@@ -1,56 +1,64 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 noet:
 
 import sys
 import ptb, render_tree, coreference_reading, head_finder, coreference, init
 
 from collections import defaultdict
 
+# TODO:
+# Add ordering information for the context printing
+# Add the ability to print without the newlines (or just return strings?)
+# Add the option to print a cluster error group with missing mentions as singletons throughout the rest
+
 CONTEXT = 40
 ANSI_WHITE = 15
 ANSI_YELLOW = 3
 ANSI_RED = 1
 
-def print_conll_style(data, out):
+def print_conll_style_part(out, text, mentions, doc, part):
+	doc_str = doc
+	if "tc/ch/00/ch" in doc and '9' not in doc:
+		val = int(doc.split('_')[-1]) * 10 - 1
+		doc_str = "tc/ch/00/ch_%04d" % val
+	print >> out, "#begin document (%s); part %s" % (doc_str, part)
+	starts = defaultdict(lambda: [])
+	ends = defaultdict(lambda: [])
+	singles = defaultdict(lambda: [])
+	for mention in mentions:
+		cluster_id = mentions[mention]
+		if mention[2] - mention[1] == 1:
+			singles[mention[0], mention[1]].append(cluster_id)
+		else:
+			starts[mention[0], mention[1]].append(cluster_id)
+			ends[mention[0], mention[2] - 1].append(cluster_id)
+
+	for i in xrange(len(text)):
+		for j in xrange(len(text[i])):
+			coref = []
+			if (i, j) in starts:
+				for cluster_id in starts[i, j]:
+					coref.append('(' + str(cluster_id))
+			if (i, j) in singles:
+				for cluster_id in singles[i, j]:
+					coref.append('(' + str(cluster_id) + ')')
+			if (i, j) in ends:
+				for cluster_id in ends[i, j]:
+					coref.append(str(cluster_id) + ')')
+			if len(coref) == 0:
+				coref = '-'
+			else:
+				coref = '|'.join(coref)
+			print >> out, "%s\t%d\t%d\t%s\t%s" % (doc_str, int(part), j, text[i][j], coref)
+		print >> out
+
+	print >> out, "#end document"
+
+def print_conll_style(data, gold, out):
 	for doc in data:
 		for part in data[doc]:
-			text = data[doc][part]['text']
-			doc_str = doc
-			if "tc/ch/00/ch" in doc and '9' not in doc:
-				val = int(doc.split('_')[-1]) * 10 - 1
-				doc_str = "tc/ch/00/ch_%04d" % val
-			print >> out, "#begin document (%s); part %s" % (doc_str, part)
-			starts = defaultdict(lambda: [])
-			ends = defaultdict(lambda: [])
-			singles = defaultdict(lambda: [])
-			for mention in data[doc][part]['mentions']:
-				cluster_id = data[doc][part]['mentions'][mention]
-				if mention[2] - mention[1] == 1:
-					singles[mention[0], mention[1]].append(cluster_id)
-				else:
-					starts[mention[0], mention[1]].append(cluster_id)
-					ends[mention[0], mention[2] - 1].append(cluster_id)
-
-			for i in xrange(len(text)):
-				for j in xrange(len(text[i])):
-					coref = []
-					if (i, j) in starts:
-						for cluster_id in starts[i, j]:
-							coref.append('(' + str(cluster_id))
-					if (i, j) in singles:
-						for cluster_id in singles[i, j]:
-							coref.append('(' + str(cluster_id) + ')')
-					if (i, j) in ends:
-						for cluster_id in ends[i, j]:
-							coref.append(str(cluster_id) + ')')
-					if len(coref) == 0:
-						coref = '-'
-					else:
-						coref = '|'.join(coref)
-					print >> out, "%s\t%d\t%d\t%s\t%s" % (doc_str, int(part), j, text[i][j], coref)
-				print >> out
-
-			print >> out, "#end document"
+			print_conll_style_part(out, gold[doc][part]['text'], data[doc][part]['mentions'], doc, part)
 
 def mention_text(text, mention, parses=None, heads=None, colour=None):
 	sentence, start, end = mention
@@ -119,7 +127,7 @@ def print_headless_mentions(out, parses, heads, mentions):
 				print >> out, mention_text(text, mention)
 				print >> out, render_tree.text_tree(parses[sentence], False)
 
-def print_mention(out, with_context, gold_parses, gold_heads, text, mention, colour=None, extra=False):
+def print_mention(out, with_context, gold_parses, gold_heads, text, mention, colour=None, extra=False, return_str=False):
 	pre_context, post_context = mention_context(text, mention)
 	if extra:
 		colour = ANSI_RED
@@ -130,32 +138,37 @@ def print_mention(out, with_context, gold_parses, gold_heads, text, mention, col
 			colour = ANSI_WHITE
 	mtext = mention_text(text, mention, gold_parses, gold_heads, "\033[38;5;%dm" % colour)
 
+	to_print = "{:<15}".format(str(mention))
 	if with_context:
-		print >> out, ' ' * (CONTEXT - len(pre_context)), pre_context, ' ' + mtext + ' ', post_context
+		to_print += '%s %s  %s  %s' % (' ' * (CONTEXT - len(pre_context)), pre_context, mtext, post_context)
 	else:
-		print >> out, str(mention) + '\t',
 		if extra:
-			print >> out, "Extra: ",
-		print >> out, mtext
+			to_print += 'Extra:  '
+		to_print += mtext
+
+	if return_str:
+		return to_print
+	else:
+		print >> out, to_print
 
 def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions):
 	mixed_groups = []
 	for i in xrange(len(groups)):
-		group = groups[i]
-		if len(group['auto']) == 0:
+		auto, gold = groups[i]
+		if len(auto) == 0:
 			# All missing
 			continue
-		if len(group['gold']) == 0:
+		if len(gold) == 0:
 			# All extra
 			continue
-		auto_count = len(group['auto'])
-		mention_count = sum([len(c) for c in group['auto']])
-		mention_count += sum([len(c) for c in group['gold']])
+		auto_count = len(auto)
+		mention_count = sum([len(c) for c in auto])
+		mention_count += sum([len(c) for c in gold])
 		earliest_mention = None
-		if len(group['auto']) > 0:
-			earlisest_mention = min([min(c) for c in group['auto']])
-		if len(group['gold']) > 0:
-			earliest_gold = min([min(c) for c in group['gold']])
+		if len(auto) > 0:
+			earlisest_mention = min([min(c) for c in auto])
+		if len(gold) > 0:
+			earliest_gold = min([min(c) for c in gold])
 			if earliest_mention is None or earliest_gold < earliest_mention:
 				earliest_mention = earliest_gold
 		mixed_groups.append((auto_count, mention_count, earliest_mention, i))
@@ -171,38 +184,38 @@ def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gol
 		print >> out_context, '-' * 60
 		print >> out_errors
 		print >> out_context
-		for cluster in group['auto']:
-			covered.update(cluster)
-		for cluster in group['gold']:
-			covered.update(cluster)
+		for part in group:
+			for cluster in part:
+				covered.update(cluster)
 	return covered
 
 def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_mentions, with_context=False, colour_map=None):
+	auto, gold = group
 	if colour_map is None:
 		colour_map = {}
 	next_colour = 3
 	# Check if all in the same gold entity
-	auto_count = len(group['auto'])
-	gold_count = len(group['gold'])
+	auto_count = len(auto)
+	gold_count = len(gold)
 	all_gold = set()
-	for cluster in group['gold']:
+	for cluster in gold:
 		all_gold.update(cluster)
 	all_auto = set()
-	for cluster in group['auto']:
+	for cluster in auto:
 		all_auto.update(cluster)
 	spurious = all_auto.difference(all_gold)
 	missing = all_gold.difference(all_auto)
 
 	if auto_count == 1 and gold_count == 1 and len(spurious) == 0 and len(missing) == 0:
 		# Perfect match
-		for cluster in group['auto']:
+		for cluster in auto:
 			sorted_cluster = list(cluster)
 			sorted_cluster.sort()
 			for mention in sorted_cluster:
 				print_mention(out, with_context, gold_parses, gold_heads, text, mention)
 	elif auto_count == 1 and gold_count == 1:
 		# Only one eneity present, so print all white (except extra)
-		for cluster in group['auto']:
+		for cluster in auto:
 			sorted_cluster = list(cluster)
 			sorted_cluster.sort()
 			for mention in sorted_cluster:
@@ -212,7 +225,7 @@ def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_me
 					print_mention(out, with_context, gold_parses, gold_heads, text, mention)
 					colour_map[gold_mentions[mention]] = ANSI_WHITE
 	else:
-		sorted_clusters = [(min(c), c) for c in group['auto']]
+		sorted_clusters = [(min(c), c) for c in auto]
 		sorted_clusters.sort()
 		first = True
 		for earliest, cluster in sorted_clusters:
@@ -238,7 +251,7 @@ def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_me
 	if len(missing) > 0:
 		print >> out
 		print >> out, "Missing:"
-		for cluster in group['gold']:
+		for cluster in gold:
 			sorted_cluster = list(cluster)
 			sorted_cluster.sort()
 			for mention in sorted_cluster:
@@ -304,6 +317,7 @@ def print_mention_list(out, gold_mentions, auto_mention_set):
 			print_mention(out, False, gold_parses, gold_heads, text, mention[0])
 
 def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_heads, text):
+	#TODO: Change to use square brackets so all can be shown
 	mentions_by_sentence = defaultdict(lambda: [[], []])
 	for mention in gold_mentions:
 		mentions_by_sentence[mention[0]][0].append(mention)
@@ -400,6 +414,7 @@ def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_h
 		sentence += 1
 
 if __name__ == '__main__':
+	#TODO: Add option to resolve span errors first
 	init.argcheck(sys.argv, 4, 4, "Print coreference resolution errors", "<prefix> <gold_dir> <test>")
 
 	auto = coreference_reading.read_conll_coref_system_output(sys.argv[3])
@@ -411,7 +426,6 @@ if __name__ == '__main__':
 	out_cluster_extra = open(sys.argv[1] + '.cluster_extra', 'w')
 	out_mention_list = open(sys.argv[1] + '.mention_list', 'w')
 	out_mention_text = open(sys.argv[1] + '.mention_text', 'w')
-	out_stats = open(sys.argv[1] + '.stats', 'w')
 	out_files = [out_cluster_errors, 
 	             out_cluster_context,
 	             out_cluster_missing,
@@ -449,79 +463,11 @@ if __name__ == '__main__':
 			groups = coreference.confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters)
 
 			covered = print_cluster_errors(groups, out_cluster_errors, out_cluster_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions)
+			print >> out_cluster_errors, "Entirely missing or extra\n"
+			print >> out_cluster_context, "Entirely missing or extra\n"
 			print_cluster_missing(out_cluster_errors, out_cluster_context, out_cluster_missing, text, gold_cluster_set, covered, gold_parses, gold_heads)
 			print_cluster_extra(out_cluster_errors, out_cluster_context, out_cluster_extra, text, auto_cluster_set, covered, gold_parses, gold_heads)
 			
-###			# Stats
-###			for cluster_num in auto_clusters:
-###				cluster = auto_clusters[cluster_num]
-###				extra = 0
-###				options = defaultdict(lambda: 0)
-###				for mention in cluster:
-###					if mention not in gold_mention_set:
-###						extra += 1
-###					else:
-###						options[gold_mentions[mention]] += 1
-###				best_score = None
-###				for option in options:
-###					others = len(cluster) - options[option]
-###					missing = len(gold_clusters[option]) - options[option]
-###					score = others + missing + extra
-###					if best_score is None or score < best_score[0]:
-###						best_score = (score, others, missing, extra)
-###				if best_score is None:
-###					# All extra
-###					print >> out_stats, 'auto', len(cluster), -1, 0, 0, extra
-###				else:
-###					print >> out_stats, 'auto', len(cluster), ' '.join([str(val) for val in best_score])
-###			for cluster_num in gold_clusters:
-###				cluster = gold_clusters[cluster_num]
-###				missed = 0
-###				options = defaultdict(lambda: 0)
-###				for mention in cluster:
-###					if mention not in auto_mention_set:
-###						missed += 1
-###					else:
-###						options[auto_mentions[mention]] += 1
-###				best_score = None
-###				for option in options:
-###					others = len(cluster) - options[option]
-###					elsewhere = len(auto_clusters[option]) - options[option]
-###					score = others + elsewhere + missed
-###					if best_score is None or score < best_score[0]:
-###						best_score = (score, others, elsewhere, missed)
-###				if best_score is None:
-###					# Completely missed
-###					print >> out_stats, 'gold', len(cluster), -1, 0, 0, extra
-###				else:
-###					print >> out_stats, 'gold', len(cluster), ' '.join([str(val) for val in best_score])
-
-###			for uset in unique_sets:
-###				gold_ids = set()
-###				for entity_id in uset:
-###					for mention in auto_clusters[entity_id]:
-###						if mention in gold_mention_set:
-###							gold_ids.add(gold_mentions[mention])
-###				print >> out_stats, 'confusion', len(uset), len(gold_ids)
-###			for cluster_num in auto_clusters:
-###				cluster = auto_clusters[cluster_num]
-###				extra = 0
-###				for mention in cluster:
-###					if mention not in gold_mention_set:
-###						extra += 1
-###				if extra == len(cluster):
-###					# Completely extra
-###					print >> out_stats, 'confusion', 1, 0
-###			for cluster_num in gold_clusters:
-###				cluster = gold_clusters[cluster_num]
-###				missed = 0
-###				for mention in cluster:
-###					if mention not in auto_mention_set:
-###						missed += 1
-###				if missed == len(cluster):
-###					# Completely missed
-###					print >> out_stats, 'confusion', 0, 1
-
 ###if __name__ == "__main__":
 ###	print "Running doctest"
 ###	import doctest
