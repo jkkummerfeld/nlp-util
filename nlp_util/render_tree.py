@@ -41,7 +41,7 @@ def text_tree(tree, single_line=True, show_traces=False, depth=0):
 	for subtree in tree.subtrees:
 		if single_line:
 			ans += ' '
-		ans += text_tree(subtree, single_line, depth + 1)
+		ans += text_tree(subtree, single_line, show_traces, depth + 1)
 	ans += ')'
 	return ans
 
