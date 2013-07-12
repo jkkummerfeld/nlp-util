@@ -93,12 +93,7 @@ class PSTree:
 		return TreeIterator(self, 'pre')
 	
 	def clone(self):
-		ans = PSTree()
-		ans.word = self.word
-		ans.label = self.label
-		ans.parent = None
-		ans.span = self.span
-		ans.subtrees = []
+		ans = PSTree(self.word, self.label, self.span)
 		for subtree in self.subtrees:
 			subclone = subtree.clone()
 			subclone.parent = ans
@@ -213,7 +208,8 @@ class PSTree:
 
 	def get_nodes(self, request='all', start=-1, end=-1, node_list=None):
 		'''Get the node(s) that have a given span.  Unspecified endpoints are
-		treated as wildcards.  The request can be 'lowest', 'highest', or 'all'.'''
+		treated as wildcards.  The request can be 'lowest', 'highest', or 'all'.
+		For 'all', the list of nodes is in order from the highest first.'''
 		if request not in ['highest', 'lowest', 'all']:
 			raise Exception("%s is not a valid request" % str(request))
 		if request == 'lowest' and start < 0 and end < 0:
@@ -239,7 +235,7 @@ class PSTree:
 				if request == 'lowest':
 					return self
 				elif request == 'all':
-					node_list.append((self.span[0], self.span[1], self))
+					node_list.insert(0, self)
 					return node_list
 		if request == 'all':
 			return node_list
@@ -270,19 +266,6 @@ class PSTree:
 				return None
 		else:
 			return start
-
-	def get_matching_node(self, node):
-		'''Find a node with the same span, label and number of children.'''
-		if node.span == self.span:
-			if node.label == self.label:
-				if len(self.subtrees) == len(node.subtrees):
-					return self
-			return self.subtrees[0].get_matching_node(node)
-		else:
-			for subtree in self.subtrees:
-				if subtree.span[0] <= node.span[0] and node.span[1] <= subtree.span[1]:
-					return subtree.get_matching_node(node)
-			return None
 
 def tree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
 	'''Construct a PSTree from the provided string, which is assumed to represent
@@ -340,6 +323,39 @@ def tree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
 		raise Exception("Text did not include complete tree\n%s" % text)
 	return root
 
+
+def clone_and_find(nodes):
+	'''Clone the tree these nodes are in and finds the equivalent nodes in the
+	new tree.'''
+	return_list = True
+	if type(nodes) != type([]):
+		return_list = False
+		nodes = [nodes]
+
+	# Note the paths to the nodes
+	paths = []
+	for node in nodes:
+		paths.append([])
+		tree = node
+		while tree.parent is not None:
+			prev = tree
+			tree = tree.parent
+			paths[-1].append(tree.subtrees.index(prev))
+
+	# Duplicate and follow the path back to the equivalent node
+	ntree = nodes[0].root().clone()
+	ans = []
+	for path in paths:
+		tree = ntree
+		for index in path[::-1]:
+			tree = tree.subtrees[index]
+		ans.append(tree)
+	if return_list:
+		return ans
+	else:
+		return ans[0]
+
+
 def get_errors(test, gold, include_terminals=False):
 	ans = []
 
@@ -352,7 +368,7 @@ def get_errors(test, gold, include_terminals=False):
 						if gnode.label != tnode.label:
 							ans.append(('diff POS', tnode.span, tnode.label, tnode, gnode.label))
 
-	test_spans = test.get_nodes('all')
+	test_spans = [(span.span[0], span.span[1], span) for span in test]
 	test_spans.sort()
 	test_span_set = {}
 	to_remove = []
@@ -367,7 +383,7 @@ def get_errors(test, gold, include_terminals=False):
 	for span in to_remove:
 		test_spans.remove(span)
 
-	gold_spans = gold.get_nodes('all')
+	gold_spans = [(span.span[0], span.span[1], span) for span in gold]
 	gold_spans.sort()
 	gold_span_set = {}
 	to_remove = []
@@ -389,7 +405,6 @@ def get_errors(test, gold, include_terminals=False):
 			gold_span_set[key] -= 1
 		else:
 			ans.append(('extra', span[2].span, span[2].label, span[2]))
-###			print ans[-1]
 
 	# Missing and crossing
 	for span in gold_spans:
