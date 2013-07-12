@@ -3,6 +3,7 @@
 # vim: set ts=2 sw=2 noet:
 
 import sys
+###from .. import pstree, treebanks, render_tree
 from nlp_util import pstree, treebanks, render_tree
 
 #TODO Add the ability to print multiple outputs in a single run, to dfferent files
@@ -60,7 +61,7 @@ if __name__ == '__main__':
 		print "  -(o)utput = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged"
 		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries"
 		print "  -(g)old = <gold filenmae>"
-		print "e.g. %s -f t -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
+		print "\ne.g. %s -f t -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
 		sys.exit(0)
 
 	args = get_args()
