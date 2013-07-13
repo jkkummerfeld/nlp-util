@@ -3,10 +3,7 @@
 # vim: set ts=2 sw=2 noet:
 
 import sys
-try:
-	from nlp_util import ptb, head_finder
-except ImportError:
-	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
+from nlp_util import pstree, head_finder
 
 def headed_tree(tree, head_map, depth=0):
 	ans = ''
@@ -25,7 +22,6 @@ if __name__ == '__main__':
 	import doctest
 	doctest.testmod()
 
-	tree = ptb.PTB_Tree()
-	tree.set_by_text("(ROOT (SINV (S (NP (PRP It)) (VP (AUX 's) (NP (NP (DT a) (NN problem)) (SBAR (WHNP (WDT that)) (S (ADVP (RB clearly)) (VP (AUX has) (S (VP (TO to) (VP (VB be) (VP (VBN resolved))))))))))) (VP (VBD said)) (NP (NP (NNP David) (NNP Cooke)) (NP (NP (JJ executive) (NN director)) (PP (IN of) (NP (DT the) (NNP RTC)))))))")
+	tree = pstree.tree_from_text("(ROOT (SINV (S (NP (PRP It)) (VP (AUX 's) (NP (NP (DT a) (NN problem)) (SBAR (WHNP (WDT that)) (S (ADVP (RB clearly)) (VP (AUX has) (S (VP (TO to) (VP (VB be) (VP (VBN resolved))))))))))) (VP (VBD said)) (NP (NP (NNP David) (NNP Cooke)) (NP (NP (JJ executive) (NN director)) (PP (IN of) (NP (DT the) (NNP RTC)))))))")
 	head_map = head_finder.collins_find_heads(tree)
 	print headed_tree(tree, head_map)
