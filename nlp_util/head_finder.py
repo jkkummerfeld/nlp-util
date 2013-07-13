@@ -3,7 +3,8 @@
 # vim: set ts=2 sw=2 noet:
 
 import sys
-import ptb
+
+#TODO: Handle other langauges
 
 collins_mapping_table = {
   'ADJP': ('right', ['NNS', 'QP', 'NN', '$', 'ADVP', 'JJ', 'VBN', 'VBG', 'ADJP', 'JJR', 'NP', 'JJS', 'DT', 'FW', 'RBR', 'RBS', 'SBAR', 'RB']),

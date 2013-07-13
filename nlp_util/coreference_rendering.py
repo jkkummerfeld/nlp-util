@@ -3,7 +3,7 @@
 # vim: set ts=2 sw=2 noet:
 
 import sys
-import ptb, render_tree, coreference_reading, head_finder, coreference, init
+import render_tree, coreference_reading, head_finder, coreference, init
 
 from collections import defaultdict
 
