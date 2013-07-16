@@ -3,10 +3,7 @@
 # vim: set ts=2 sw=2 noet:
 
 import sys
-try:
-	from nlp_util import ptb, render_tree, nlp_eval
-except ImportError:
-	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
+from nlp_util import pstree, render_tree, nlp_eval, treebanks
 
 def mprint(text, out_dict, out_name):
 	all_stdout = True
@@ -106,11 +103,11 @@ if __name__ == '__main__':
 			mprint("Not parsed", out, 'all')
 			continue
 
-		gold_complete_tree = ptb.PTB_Tree()
-		gold_complete_tree.set_by_text(gold_text)
-		gold_nofunc_tree = ptb.remove_function_tags(gold_complete_tree)
-		gold_notrace_tree = ptb.remove_traces(gold_complete_tree)
-		gold_tree = ptb.apply_collins_rules(gold_complete_tree)
+		gold_complete_tree = pstree.tree_from_text(gold_text)
+		treebanks.ptb_cleaning(gold_complete_tree)
+		gold_notrace_tree = treebanks.remove_traces(gold_complete_tree, False)
+		gold_nofunc_tree = treebanks.remove_function_tags(gold_notrace_tree, False)
+		gold_tree = treebanks.apply_collins_rules(gold_complete_tree, False)
 		if gold_tree is None:
 			mprint("Empty gold tree", out, 'all')
 			mprint(gold_complete_tree.__repr__(), out, 'all')
@@ -119,14 +116,12 @@ if __name__ == '__main__':
 
 		if '()' in test_text:
 			mprint("() test tree", out, 'all')
-			mprint(test_complete_tree.__repr__(), out, 'all')
-			mprint(test_tree.__repr__(), out, 'all')
 			continue
-		test_complete_tree = ptb.PTB_Tree()
-		test_complete_tree.set_by_text(test_text)
-		test_nofunc_tree = ptb.remove_function_tags(test_complete_tree)
-		test_notrace_tree = ptb.remove_traces(test_complete_tree)
-		test_tree = ptb.apply_collins_rules(test_complete_tree)
+		test_complete_tree = pstree.tree_from_text(test_text)
+		treebanks.ptb_cleaning(test_complete_tree)
+		test_notrace_tree = treebanks.remove_traces(test_complete_tree, False)
+		test_nofunc_tree = treebanks.remove_function_tags(test_notrace_tree, False)
+		test_tree = treebanks.apply_collins_rules(test_complete_tree, False)
 		if test_tree is None:
 			mprint("Empty test tree", out, 'all')
 			mprint(test_complete_tree.__repr__(), out, 'all')
@@ -142,7 +137,7 @@ if __name__ == '__main__':
 
 		mprint("After removing traces:", out, 'notrace')
 		mprint(render_tree.text_coloured_errors(test_notrace_tree, gold_notrace_tree).strip(), out, 'notrace')
-		match, gold, test = ptb.counts_for_prf(test_notrace_tree, gold_notrace_tree)
+		match, gold, test = pstree.counts_for_prf(test_notrace_tree, gold_notrace_tree)
 		stats['notrace'][0] += match
 		stats['notrace'][1] += gold
 		stats['notrace'][2] += test
@@ -151,7 +146,7 @@ if __name__ == '__main__':
 
 		mprint("After removing traces and function tags:", out, 'nofunc')
 		mprint(render_tree.text_coloured_errors(test_nofunc_tree, gold_nofunc_tree).strip(), out, 'nofunc')
-		match, gold, test = ptb.counts_for_prf(test_nofunc_tree, gold_nofunc_tree)
+		match, gold, test = pstree.counts_for_prf(test_nofunc_tree, gold_nofunc_tree)
 		stats['nofunc'][0] += match
 		stats['nofunc'][1] += gold
 		stats['nofunc'][2] += test
@@ -160,7 +155,7 @@ if __name__ == '__main__':
 
 		mprint("After applying collins rules:", out, 'post_collins')
 		mprint(render_tree.text_coloured_errors(test_tree, gold_tree).strip(), out, 'post_collins')
-		match, gold, test = ptb.counts_for_prf(test_tree, gold_tree)
+		match, gold, test = pstree.counts_for_prf(test_tree, gold_tree)
 		stats['post_collins'][0] += match
 		stats['post_collins'][1] += gold
 		stats['post_collins'][2] += test
@@ -168,8 +163,8 @@ if __name__ == '__main__':
 		mprint("Eval post collins: %.2f  %.2f  %.2f" % (p*100, r*100, f*100), out, 'post_collins')
 
 		# Work out the minimal span to show all errors
-		gold_spans = set([(span[2].label, span[0], span[1]) for span in gold_nofunc_tree.get_spans()])
-		test_spans = set([(span[2].label, span[0], span[1]) for span in test_nofunc_tree.get_spans()])
+		gold_spans = set([(node.label, node.span[0], node.span[1]) for node in gold_nofunc_tree.get_nodes()])
+		test_spans = set([(node.label, node.span[0], node.span[1]) for node in test_nofunc_tree.get_nodes()])
 		diff = gold_spans.symmetric_difference(test_spans)
 		width = [1e5, -1]
 		for span in diff:

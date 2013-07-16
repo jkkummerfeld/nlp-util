@@ -50,6 +50,7 @@ def print_top(error_order, extra_info, out):
 		\\renewcommand{\\fboxrule}{0.05mm}
 		\\newcommand{\\mybarheight}{2mm}
 		\\newcommand{\\myboxwidth}{8mm}
+		\\newcommand{\mybar}[1]{\\framebox[\myboxwidth][l]{\\textcolor{MyRed}{\\rule{#1mm}{\mybarheight}}}}
 		\\begin{center}'''
 	print >> out, "\\begin{tabular}{|l%s|}" % (col_format)
 	print >> out, "\t\\hline"
@@ -95,7 +96,7 @@ def print_top(error_order, extra_info, out):
 	print >> out, "%s \\\\" % ' & '.join(["%.2f" % val[1] for val in error_order if val != '|'])
 
 def print_data(system_order, error_order, data, mapping, extra_info, out):
-	entry_template = " \\framebox[\\myboxwidth][l]{\\rule{%fmm}{\\mybarheight}}"
+	entry_template = " \\mybar{%f}"
 	text = {}
 	for name, info in data:
 		print name
