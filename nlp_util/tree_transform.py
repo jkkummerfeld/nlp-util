@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim: set ts=2 sw=2 noet:
 
-import pstree, parse_error_set
+import pstree
 
 def change_label_by_node(node, new_label, in_place):
 	if not in_place:
