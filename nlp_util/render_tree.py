@@ -3,7 +3,7 @@
 # vim: set ts=2 sw=2 noet:
 '''Various string representations of trees.'''
 
-import pstree
+import pstree, parse_errors
 
 # TODO:todo Fix handling of traces throughout
 
@@ -161,7 +161,7 @@ def text_coloured_errors(tree, gold=None, depth=0, single_line=False, missing=No
 		if gold is None:
 			return "Error - no gold tree and no missing list for colour repr"
 		# look at gold and work out what missing should be
-		errors = pstree.get_errors(tree, gold, POS)
+		errors = parse_errors.get_errors(tree, gold, POS)
 ###		for error in errors:
 ###			ans += '%s (%d, %d) %s\n' % (error[0], error[1][0], error[1][1], error[2])
 		extra = [e[3] for e in errors if e[0] == 'extra' and e[3].word is None]
