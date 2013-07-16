@@ -9,9 +9,9 @@ the time.'''
 import sys, time
 
 def header(args, out=sys.stdout):
-	header = "# This output was produced at:\n# "
+	header = "# Time of run:\n# "
 	header += time.ctime(time.time())
-	header += "\n# By the following command:\n# "
+	header += "\n# Command:\n# "
 	header += ' '.join(args)
 	header += "\n#"
 	if type(out) == type(sys.stdout):
