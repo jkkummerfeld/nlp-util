@@ -6,11 +6,13 @@
 powerful, and flexible, alternatives out there, but this was what I needed at
 the time.'''
 
-import sys
+import sys, time
 
 def header(args, out=sys.stdout):
-	header = "# This output was produced by the following command:"
-	header += "\n# {}".format(' '.join(args))
+	header = "# This output was produced at:\n# "
+	header += time.ctime(time.time())
+	header += "\n# By the following command:\n# "
+	header += ' '.join(args)
 	header += "\n#"
 	if type(out) == type(sys.stdout):
 		print >> out, header
@@ -30,8 +32,7 @@ def argcheck(argv, minargs, maxargs, desc, arg_desc, further_desc=''):
 	print >> sys.stderr, "Expected {} to {} args, got:\n{}".format(minargs, maxargs, ' '.join(argv))
 	sys.exit(1)
 
-if __name__ == "__main__":
-	print "Running doctest"
-	import doctest
-	doctest.testmod()
-
+###if __name__ == "__main__":
+###	print "Running doctest"
+###	import doctest
+###	doctest.testmod()
