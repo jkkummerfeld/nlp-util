@@ -12,6 +12,9 @@ from pstree import *
 ###	lone tags:
 ###				CP (IP...
 
+# At the moment the generator can't handle blank line indicating a
+# failed parse.
+
 ptb_tag_set = set(['S', 'SBAR', 'SBARQ', 'SINV', 'SQ', 'ADJP', 'ADVP', 'CONJP',
 'FRAG', 'INTJ', 'LST', 'NAC', 'NP', 'NX', 'PP', 'PRN', 'PRT', 'QP', 'RRC',
 'UCP', 'VP', 'WHADJP', 'WHADVP', 'WHNP', 'WHPP', 'X', 'NML'])
@@ -230,7 +233,7 @@ def homogenise_tree(tree, tag_set=ptb_tag_set):
 			tree = root
 	return tree
 
-def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False):
+def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False, blank_line_coverage=False):
 	'''Read a single tree from the given PTB file.
 
 	The function reads a character at a time, stopping as soon as a tree can be
@@ -255,6 +258,8 @@ def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
 		if char == '':
 			return None
 			break
+		if char == '\n' and cur_text == ' ' and blank_line_coverage:
+			return "Empty"
 		if char in '\n\t':
 			char = ' '
 		cur_text += char
@@ -275,7 +280,7 @@ def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
 	ptb_cleaning(tree)
 	return tree
 
-def conll_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False):
+def conll_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False, blank_line_coverage=False):
 	'''Read a single tree from the given CoNLL Shared Task OntoNotes data file.
 	
 	>>> from StringIO import StringIO

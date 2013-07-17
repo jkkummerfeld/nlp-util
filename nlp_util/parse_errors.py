@@ -5,14 +5,15 @@
 import pstree
 
 class Parse_Error_Set:
-	def __init__(self, gold=None, test=None):
+	def __init__(self, gold=None, test=None, include_terminals=False):
 		self.missing = []
 		self.crossing = []
 		self.extra = []
+		self.POS = []
 		self.spans = {}
 
 		if gold is not None and test is not None:
-			errors = get_errors(test, gold)
+			errors = get_errors(test, gold, include_terminals)
 			for error in errors:
 				self.add_error(error[0], error[1], error[2], error[3])
 	
@@ -29,6 +30,8 @@ class Parse_Error_Set:
 			self.crossing.append(error)
 		elif etype == 'extra':
 			self.extra.append(error)
+		elif etype == 'diff POS':
+			self.POS.append(error)
 
 	def is_extra(self, node):
 		if node.span in self.spans:
@@ -39,7 +42,7 @@ class Parse_Error_Set:
 		return False
 
 	def __len__(self):
-		return len(self.missing) + len(self.extra) + len(self.crossing)
+		return len(self.missing) + len(self.extra) + len(self.crossing) + (2*len(self.POS))
 
 def get_errors(test, gold, include_terminals=False):
 	ans = []
@@ -109,6 +112,7 @@ def get_errors(test, gold, include_terminals=False):
 	return ans
 
 def counts_for_prf(test, gold, include_root=False, include_terminals=False):
+	# Note - currently assumes the roots match
 	tcount = 0
 	for node in test:
 		if node.is_terminal() and not include_terminals:
@@ -124,12 +128,11 @@ def counts_for_prf(test, gold, include_root=False, include_terminals=False):
 			continue
 		gcount += 1
 	match = tcount
-	errors = get_errors(test, gold, include_terminals)
-	for error in errors:
-		if error[3].parent is not None or include_root:
-			if error[0] == 'extra':
-				match -= 1
-	return match, gcount, tcount
+	errors = Parse_Error_Set(gold, test, True)
+	match = tcount - len(errors.extra)
+	if include_terminals:
+		match -= len(errors.POS)
+	return match, gcount, tcount, len(errors.crossing), len(errors.POS)
 
 if __name__ == '__main__':
 	print "No unit testing implemented for Error_Set"
