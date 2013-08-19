@@ -200,6 +200,7 @@ def apply_collins_rules(tree, in_place=True):
 		if node.label in POS_to_convert:
 			node.label = POS_to_convert[node.label]
 	
+	tree.calculate_spans()
 	return tree
 
 def homogenise_tree(tree, tag_set=ptb_tag_set):
