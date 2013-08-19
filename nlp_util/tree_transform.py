@@ -36,8 +36,11 @@ def add_node(tree, span, label, position=0, in_place=True):
 
 	# Find the node(s) that should be within the new span
 	nodes = tree.get_spanning_nodes(*span)
+	# Do not operate on the root node
+	if nodes[0].parent is None:
+		nodes = nodes[0].subtrees[:]
 	for i in xrange(position):
-		if len(nodes) != 1:
+		if len(nodes) > 1:
 			return (False, "Position {} is too deep".format(position))
 		nodes[0] = nodes[0].subtrees[0]
 	nodes.sort(key=lambda x: x.span)
@@ -57,8 +60,8 @@ def add_node(tree, span, label, position=0, in_place=True):
 
 	# Move the subtrees
 	for node in nodes:
-		nnode.subtrees.append(node)
 		node.parent.subtrees.remove(node)
+		nnode.subtrees.append(node)
 		node.parent = nnode
 
 	return (True, (tree, nnode))
