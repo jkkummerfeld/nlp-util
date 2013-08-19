@@ -6,7 +6,7 @@
 import pstree, parse_errors
 
 # TODO:todo Fix handling of traces throughout
-
+# Handling of unary order
 # Sites that render trees
 # http://mshang.ca/syntree/
 # http://www.yohasebe.com/rsyntaxtree/
