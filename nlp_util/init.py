@@ -29,10 +29,10 @@ def argcheck(argv, minargs, maxargs, desc, arg_desc, further_desc=''):
 	print >> sys.stderr, "{}\n  {} {}".format(desc, argv[0], arg_desc)
 	if len(further_desc) > 0:
 		print >> sys.stderr, "\n{}".format(further_desc)
-	print >> sys.stderr, "Expected {} to {} args, got:\n{}".format(minargs, maxargs, ' '.join(argv))
+	print >> sys.stderr, "Expected {} to {} args, got:\n{}".format(minargs - 1, maxargs - 1, ' '.join(argv))
 	sys.exit(1)
 
-###if __name__ == "__main__":
-###	print "Running doctest"
-###	import doctest
-###	doctest.testmod()
+if __name__ == "__main__":
+	print "Running doctest"
+	import doctest
+	doctest.testmod()

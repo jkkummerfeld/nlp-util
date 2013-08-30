@@ -57,7 +57,6 @@ if __name__ == '__main__':
 	if len(sys.argv) == 1:
 		print "Read trees from stdin and print them to stdout."
 		print "Options:"
-		print "  -(i)nput = (p)enn treebank | (c)onll or OntoNotes"
 		print "  -(o)utput = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged"
 		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries"
 		print "  -(g)old = <gold filenmae>"
@@ -65,7 +64,6 @@ if __name__ == '__main__':
 		sys.exit(0)
 
 	args = get_args()
-	in_format = args["i"] == 'p' if 'i' in args else True
 	out_format = args["o"] if 'o' in args else 's'
 	edits = args["e"] if 'e' in args else ''
 	gold_file = args["g"] if 'g' in args else None

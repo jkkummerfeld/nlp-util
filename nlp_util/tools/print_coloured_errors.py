@@ -3,7 +3,7 @@
 # vim: set ts=2 sw=2 noet:
 
 import sys
-from nlp_util import pstree, render_tree, nlp_eval, treebanks
+from nlp_util import pstree, render_tree, nlp_eval, treebanks, parse_errors
 
 def mprint(text, out_dict, out_name):
 	all_stdout = True
@@ -31,9 +31,7 @@ if __name__ == '__main__':
 
 	out = {
 		'err': sys.stdout,
-		'notrace': sys.stdout,
-		'nofunc': sys.stdout,
-		'post_collins': sys.stdout,
+		'out': sys.stdout,
 		'tex': sys.stdout
 	}
 	if len(sys.argv) > 3:
@@ -44,9 +42,7 @@ if __name__ == '__main__':
 	test_in = open(sys.argv[2])
 	sent_no = 0
 	stats = {
-		'notrace': [0, 0, 0],
-		'nofunc': [0, 0, 0],
-		'post_collins': [0, 0, 0]
+		'out': [0, 0, 0]
 	}
 	
 	tex_start = '''\\documentclass[11pt]{article}
@@ -105,8 +101,6 @@ if __name__ == '__main__':
 
 		gold_complete_tree = pstree.tree_from_text(gold_text)
 		treebanks.ptb_cleaning(gold_complete_tree)
-		gold_notrace_tree = treebanks.remove_traces(gold_complete_tree, False)
-		gold_nofunc_tree = treebanks.remove_function_tags(gold_notrace_tree, False)
 		gold_tree = treebanks.apply_collins_rules(gold_complete_tree, False)
 		if gold_tree is None:
 			mprint("Empty gold tree", out, 'all')
@@ -119,8 +113,6 @@ if __name__ == '__main__':
 			continue
 		test_complete_tree = pstree.tree_from_text(test_text)
 		treebanks.ptb_cleaning(test_complete_tree)
-		test_notrace_tree = treebanks.remove_traces(test_complete_tree, False)
-		test_nofunc_tree = treebanks.remove_function_tags(test_notrace_tree, False)
 		test_tree = treebanks.apply_collins_rules(test_complete_tree, False)
 		if test_tree is None:
 			mprint("Empty test tree", out, 'all')
@@ -135,36 +127,18 @@ if __name__ == '__main__':
 			mprint("Gold: " + gold_words.__repr__(), out, 'all')
 			mprint("Test: " + test_words.__repr__(), out, 'all')
 
-		mprint("After removing traces:", out, 'notrace')
-		mprint(render_tree.text_coloured_errors(test_notrace_tree, gold_notrace_tree).strip(), out, 'notrace')
-		match, gold, test = pstree.counts_for_prf(test_notrace_tree, gold_notrace_tree)
-		stats['notrace'][0] += match
-		stats['notrace'][1] += gold
-		stats['notrace'][2] += test
+		mprint("After applying collins rules:", out, 'out')
+		mprint(render_tree.text_coloured_errors(test_tree, gold_tree).strip(), out, 'out')
+		match, gold, test, crossing, POS = parse_errors.counts_for_prf(test_tree, gold_tree)
+		stats['out'][0] += match
+		stats['out'][1] += gold
+		stats['out'][2] += test
 		p, r, f = nlp_eval.calc_prf(match, gold, test)
-		mprint("Eval notrace: %.2f  %.2f  %.2f" % (p*100, r*100, f*100), out, 'notrace')
-
-		mprint("After removing traces and function tags:", out, 'nofunc')
-		mprint(render_tree.text_coloured_errors(test_nofunc_tree, gold_nofunc_tree).strip(), out, 'nofunc')
-		match, gold, test = pstree.counts_for_prf(test_nofunc_tree, gold_nofunc_tree)
-		stats['nofunc'][0] += match
-		stats['nofunc'][1] += gold
-		stats['nofunc'][2] += test
-		p, r, f = nlp_eval.calc_prf(match, gold, test)
-		mprint("Eval nofunc: %.2f  %.2f  %.2f" % (p*100, r*100, f*100), out, 'nofunc')
-
-		mprint("After applying collins rules:", out, 'post_collins')
-		mprint(render_tree.text_coloured_errors(test_tree, gold_tree).strip(), out, 'post_collins')
-		match, gold, test = pstree.counts_for_prf(test_tree, gold_tree)
-		stats['post_collins'][0] += match
-		stats['post_collins'][1] += gold
-		stats['post_collins'][2] += test
-		p, r, f = nlp_eval.calc_prf(match, gold, test)
-		mprint("Eval post collins: %.2f  %.2f  %.2f" % (p*100, r*100, f*100), out, 'post_collins')
+		mprint("Eval: %.2f  %.2f  %.2f" % (p*100, r*100, f*100), out, 'out')
 
 		# Work out the minimal span to show all errors
-		gold_spans = set([(node.label, node.span[0], node.span[1]) for node in gold_nofunc_tree.get_nodes()])
-		test_spans = set([(node.label, node.span[0], node.span[1]) for node in test_nofunc_tree.get_nodes()])
+		gold_spans = set([(node.label, node.span[0], node.span[1]) for node in gold_tree.get_nodes()])
+		test_spans = set([(node.label, node.span[0], node.span[1]) for node in test_tree.get_nodes()])
 		diff = gold_spans.symmetric_difference(test_spans)
 		width = [1e5, -1]
 		for span in diff:
@@ -175,17 +149,16 @@ if __name__ == '__main__':
 			if span[2] > width[1]:
 				width[1] = span[2]
 		mprint('\n\\scalebox{\\derivscale}{', out, 'tex')
-		mprint(render_tree.tex_synttree(test_nofunc_tree, gold_spans, span=width), out, 'tex')
+		mprint(render_tree.tex_synttree(test_tree, gold_spans, span=width), out, 'tex')
 		mprint( '}\n\\small\n(a) Parser output\n\n\\vspace{3mm}\n\\scalebox{\\derivscale}{', out, 'tex')
-		mprint(render_tree.tex_synttree(gold_nofunc_tree, test_spans, span=width), out, 'tex')
+		mprint(render_tree.tex_synttree(gold_tree, test_spans, span=width), out, 'tex')
 		mprint( '}\n\\small\n(b) Gold tree\n\\pagebreak', out, 'tex')
 
 		mprint("", out, 'all')
-	for key in ['notrace', 'nofunc', 'post_collins']:
-		match = stats[key][0]
-		gold = stats[key][1]
-		test = stats[key][2]
-		p, r, f = nlp_eval.calc_prf(match, gold, test)
-		mprint("Overall %s: %.2f  %.2f  %.2f" % (key, p*100, r*100, f*100), out, key)
+	match = stats['out'][0]
+	gold = stats['out'][1]
+	test = stats['out'][2]
+	p, r, f = nlp_eval.calc_prf(match, gold, test)
+	mprint("Overall %s: %.2f  %.2f  %.2f" % ('out', p*100, r*100, f*100), out, 'out')
 	
 	mprint('\\end{document}', out, 'tex')
