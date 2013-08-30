@@ -258,7 +258,7 @@ def read_cherrypicker_coref(filename, gold_text):
 	for line in open(filename):
 		for coref_start, coref_end, token in re.findall(regex, line.strip()):
 			if token != '':
-				print token, gold_text[sentence][word]
+###				print token, gold_text[sentence][word]
 				token = token.strip()
 				allowed = token == gold_text[sentence][word]
 				allowed = allowed or token in '{}[]()'
@@ -273,7 +273,7 @@ def read_cherrypicker_coref(filename, gold_text):
 						prev[0] = gold_text[sentence][word]
 						prev[1] = token
 						text[-1].append(token)
-						print prev, token, filename
+###						print prev, token, filename
 					elif prev[1] + token == prev[0] or '/'.join((prev[1] + token).split('_')) == prev[0]:
 						if len(text[-1]) == 0:
 							text[-2][-1] = prev[0]
@@ -281,9 +281,9 @@ def read_cherrypicker_coref(filename, gold_text):
 							text[-1][-1] = prev[0]
 						word += 1
 						prev = ['', '']
-						print prev, token, filename
+###						print prev, token, filename
 					else:
-						print prev, token, filename
+###						print prev, token, filename
 						prev[1] += token
 
 				if word == len(gold_text[sentence]):
@@ -355,8 +355,8 @@ def read_bart_coref(filename, gold_text):
 				if '&middot;' in token:
 					pass
 				elif token != gold_text[sentence][word]:
-					if len(prev) > 2:
-						print gold_text[sentence][word], token, ''.join(prev), filename
+###					if len(prev) > 2:
+###						print gold_text[sentence][word], token, ''.join(prev), filename
 					if len(prev) == 0:
 						prev.append(token)
 						token = None
@@ -406,9 +406,9 @@ def read_reconcile_coref(filename, gold_text):
 			if token != '':
 				token = token.strip()
 				if token != gold_text[sentence][word]:
-					if len(prev) > 2:
-						print "'%s' '%s'" % (token, gold_text[sentence][word])
-						print ''.join(prev), sentence, word, filename
+###					if len(prev) > 2:
+###						print "'%s' '%s'" % (token, gold_text[sentence][word])
+###						print ''.join(prev), sentence, word, filename
 					if len(prev) == 0:
 						prev.append(token)
 						token = None
@@ -485,7 +485,6 @@ def read_conll_doc(filename, ans=None, rtext=True, rparses=True, rheads=True, rc
 def read_conll_gold_files(dir_prefix):
 	ans = defaultdict(lambda: {})
 	query = os.path.join(dir_prefix, '*/*/*/*gold*conll')
-	print query
 	for filename in glob.glob(query):
 		read_conll_doc(filename, ans)
 	return ans
@@ -501,7 +500,7 @@ def read_conll_matching_file(dir_prefix, filename, ans=None):
 	if len(filenames) == 1:
 		read_conll_doc(filenames[0], ans)
 	else:
-		print "Reading matching doc failed for %s/%s as %d files were found." % (dir_prefix, filename, len(filenames))
+		print >> sys.stderr, "Reading matching doc failed for %s/%s as %d files were found." % (dir_prefix, filename, len(filenames))
 	return ans
 
 def read_conll_matching_files(conll_docs, dir_prefix):
@@ -614,8 +613,8 @@ def read_conll_scorer_output(text):
 				results['conll'][i] += results[metric][i] / 3.0
 	return results
 
-if __name__ == "__main__":
-	print "Running doctest"
-	import doctest
-	doctest.testmod()
+###if __name__ == "__main__":
+###	print "Running doctest"
+###	import doctest
+###	doctest.testmod()
 

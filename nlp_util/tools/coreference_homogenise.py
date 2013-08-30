@@ -1,6 +1,6 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # vim: set ts=2 sw=2 noet:
-#!/usr/bin/env python
 '''Converts output from a range of coref systems into the style of the 2011
 CoNLL Shared Task.
 
@@ -13,10 +13,7 @@ intended header:  #begin document (bn/voa/02/voa_0220); part 000
 '''
 
 import sys
-try:
-	from nlp_util import init, coreference_reading, coreference_rendering
-except ImportError:
-	raise Exception("Remember to either install nlp_util or set up a symlink to the nlp_util directory")
+from nlp_util import init, coreference_reading, coreference_rendering
 
 import os, glob
 from collections import defaultdict
@@ -97,7 +94,19 @@ def read_uiuc(auto_src, gold_src):
 	return multifile_process(path, call)
 
 if __name__ == '__main__':
-	init.argcheck(sys.argv, 5, 5, "Translate a system output into the CoNLL format", "<prefix> <[bart,cherrypicker,ims,opennlp,reconcile,relaxcor,stanford,stanford_xml,uiuc]> <dir | file> <gold dir>")
+	formats = {
+		'bart': read_bart,
+		'cherrypicker': read_cherrypicker,
+		'conll': read_conll,
+		'ims': read_ims,
+###		'opennlp': read_opennlp,
+		'reconcile': read_reconcile,
+###		'relaxcor': read_relaxcor,
+		'stanford_xml': read_stanford_xml,
+		'stanford': read_stanford,
+		'uiuc': read_uiuc
+	}
+	init.argcheck(sys.argv, 5, 5, "Translate a system output into the CoNLL format", "<prefix> <[{}]> <dir | file> <gold dir>".format(','.join(formats.keys())))
 
 	out = open(sys.argv[1] + '.out', 'w')
 	log = open(sys.argv[1] + '.log', 'w')
@@ -105,18 +114,11 @@ if __name__ == '__main__':
 
 	auto_src = sys.argv[3]
 	gold_src = sys.argv[4]
-	auto, gold = {
-		'bart': read_bart,
-		'cherrypicker': read_cherrypicker,
-		'conll': read_conll,
-		'ims': read_ims,
-		'opennlp': read_opennlp,
-		'reconcile': read_reconcile,
-		'relaxcor': read_relaxcor,
-		'stanford_xml': read_stanford_xml,
-		'stanford': read_stanford,
-		'uiuc': read_uiuc
-	}[sys.argv[2]](auto_src, gold_src)
+	if sys.argv[2] not in formats:
+		print "Invalid format.  Valid options are:"
+		print '\n'.join(formats.keys())
+		sys.exit(1)
+	auto, gold = formats[sys.argv[2]](auto_src, gold_src)
 	
 	for doc in auto:
 		for part in auto[doc]:

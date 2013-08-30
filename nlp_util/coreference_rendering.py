@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim: set ts=2 sw=2 noet:
 
-import sys
+import sys, string
 import render_tree, coreference_reading, head_finder, coreference, init
 
 from collections import defaultdict
@@ -16,6 +16,107 @@ CONTEXT = 40
 ANSI_WHITE = 15
 ANSI_YELLOW = 3
 ANSI_RED = 1
+
+def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clusters, auto_cluster_set, text, parses, heads):
+	# Apply changes for cases where the difference is only leading or trailing punctuation
+	mapping = {}
+	used_gold = set()
+	unique_to_gold = gold_mention_set.difference(auto_mention_set)
+	unique_to_auto =  auto_mention_set.difference(gold_mention_set)
+	for amention in unique_to_auto:
+		sentence, astart, aend = amention
+		while (aend - astart > 1 and
+		       (text[sentence][astart] == "the" or
+		       (len(text[sentence][astart]) == 1 and
+		       text[sentence][astart][0] not in string.letters))):
+			astart += 1
+		while (aend - astart > 1 and
+		       (text[sentence][aend - 1] == "'s" or
+		       (len(text[sentence][aend - 1]) == 1 and
+		       text[sentence][aend - 1][0] not in string.letters))):
+			aend -= 1
+		for gmention in unique_to_gold:
+			gsentence, gstart, gend = gmention
+			if sentence != gsentence or gmention in used_gold:
+				continue
+			while (gend - gstart > 1 and
+			       (text[sentence][gstart] == "the" or
+			       (len(text[sentence][gstart]) == 1 and
+			       text[sentence][gstart][0] not in string.letters))):
+				gstart += 1
+			while (gend - gstart > 1 and
+			       (text[sentence][gend - 1] == "'s" or
+			       (len(text[sentence][gend - 1]) == 1 and
+			       text[sentence][gend - 1][0] not in string.letters))):
+				gend -= 1
+			if astart == gstart and aend == gend:
+				mapping[amention] = gmention
+				used_gold.add(gmention)
+	# Apply mapping to create new auto_mention_set
+	for mention in mapping:
+		auto_mention_set.remove(mention)
+		auto_mention_set.add(mapping[mention])
+		cluster_id = auto_mentions.pop(mention)
+		auto_mentions[mapping[mention]] = cluster_id
+		auto_clusters[cluster_id].remove(mention)
+		auto_clusters[cluster_id].append(mapping[mention])
+		to_remove = None
+		for cluster in auto_cluster_set:
+			if mention in cluster:
+				to_remove = cluster
+		auto_cluster_set.remove(to_remove)
+		ncluster = []
+		for mention2 in to_remove:
+			if mention2 == mention:
+				mention2 = mapping[mention]
+			ncluster.append(mention2)
+		ncluster = tuple(ncluster)
+		auto_cluster_set.add(ncluster)
+
+	# Create a mapping based on heads
+	head_dict = defaultdict(lambda: {'auto': [], 'gold': []})
+	for mention in auto_mention_set.difference(gold_mention_set):
+		sentence, start, end = mention
+		head = coreference.mention_head(mention, text, parses, heads, default_last=True)
+		# This will default to last word if the mention is not a constituent, is
+		# there an alternative?
+		if head is not None:
+			head = (mention[0], head[0])
+			head_dict[head]['auto'].append(mention)
+	for mention in gold_mention_set.difference(auto_mention_set):
+		sentence, start, end = mention
+		head = coreference.mention_head(mention, text, parses, heads, default_last=True)
+		if head is not None:
+			head = (mention[0], head[0])
+			head_dict[head]['gold'].append(mention)
+
+	mapping = {}
+	for head in head_dict:
+		amentions = head_dict[head]['auto']
+		gmentions = head_dict[head]['gold']
+		if len(amentions) == 1 and len(gmentions) == 1:
+			mapping[amentions[0]] = gmentions[0]
+
+	# Apply mapping to create new auto_mention_set
+	for mention in mapping:
+		auto_mention_set.remove(mention)
+		auto_mention_set.add(mapping[mention])
+		cluster_id = auto_mentions.pop(mention)
+		auto_mentions[mapping[mention]] = cluster_id
+		auto_clusters[cluster_id].remove(mention)
+		auto_clusters[cluster_id].append(mapping[mention])
+		to_remove = None
+		for cluster in auto_cluster_set:
+			if mention in cluster:
+				to_remove = cluster
+		auto_cluster_set.remove(to_remove)
+		ncluster = []
+		for mention2 in to_remove:
+			if mention2 == mention:
+				mention2 = mapping[mention]
+			ncluster.append(mention2)
+		ncluster = tuple(ncluster)
+		auto_cluster_set.add(ncluster)
 
 def print_conll_style_part(out, text, mentions, doc, part):
 	doc_str = doc
@@ -185,8 +286,8 @@ def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gol
 		print >> out_errors
 		print >> out_context
 		for part in group:
-			for cluster in part:
-				covered.update(cluster)
+			for entity in part:
+				covered.update(entity)
 	return covered
 
 def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_mentions, with_context=False, colour_map=None):
@@ -274,7 +375,11 @@ def print_cluster_missing(out_errors, out_context, out, text, gold_cluster_set, 
 				print_mention(out_context, True, gold_parses, gold_heads, text, mention)
 				printed += 1
 		if printed > 0 and len(entity) != printed:
-			print >> sys.stderr, "Covered isn't being filled correctly", printed, len(entity)
+			print >> sys.stderr, "Covered isn't being filled correctly (missing)", printed, len(entity)
+			print >> sys.stderr, entity
+			for mention in entity:
+				if mention not in covered:
+					print >> sys.stderr, mention
 		if printed > 0:
 			print >> out_errors
 			print >> out_context
@@ -292,7 +397,11 @@ def print_cluster_extra(out_errors, out_context, out, text, auto_cluster_set, co
 				print_mention(out_context, True, gold_parses, gold_heads, text, mention, extra=True)
 				printed += 1
 		if printed > 0 and len(entity) != printed:
-			print >> sys.stderr, "Covered isn't being filled correctly", printed, len(entity)
+			print >> sys.stderr, "Covered isn't being filled correctly (extra)", printed, len(entity)
+			print >> sys.stderr, entity
+			for mention in entity:
+				if mention not in covered:
+					print >> sys.stderr, mention
 		if printed > 0:
 			print >> out_errors
 			print >> out_context
@@ -310,112 +419,147 @@ def print_mention_list(out, gold_mentions, auto_mention_set):
 	mentions.sort()
 	for mention in mentions:
 		if not mention[1]:
-			print_mention(out, False, gold_parses, gold_heads, text, mention[0], extra=True)
+			print_mention(out, False, gold_parses, gold_heads, text, mention[0], colour=ANSI_RED)
 		elif mention[0] not in auto_mention_set:
 			print_mention(out, False, gold_parses, gold_heads, text, mention[0], colour=4)
 		else:
 			print_mention(out, False, gold_parses, gold_heads, text, mention[0])
 
 def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_heads, text):
-	#TODO: Change to use square brackets so all can be shown
+	'''# Text is printed with both system and gold mentions marked:
+#  - Gold mentions are marked with '[ ... ]'
+#  - System mentions are marked with '( ... )'
+#  - Mentions that occur in both are marked with '{ ... }'
+# Colour is used to indicate missing and extra mentions.  Blue for missing, red for extra, and purple where they overlap.'''
+
 	mentions_by_sentence = defaultdict(lambda: [[], []])
 	for mention in gold_mentions:
 		mentions_by_sentence[mention[0]][0].append(mention)
 	for mention in auto_mention_set:
 		mentions_by_sentence[mention[0]][1].append(mention)
 	
+	# Maps from word locations to tuples of:
+	# ( in missing mention , in extra mention , is a head , 
+	#   [(is gold? , end)]
+	#   [(is gold? , start)] )
 	word_colours = {}
+	heads = set()
 	for mention in gold_mentions:
-		if mention in auto_mention_set:
-			continue
-		for i in xrange(mention[1], mention[2]):
-			word_colours[mention[0], i] = [True, False, False]
 		node = gold_parses[mention[0]].get_nodes('lowest', mention[1], mention[2])
 		if node is not None:
 			head = head_finder.get_head(gold_heads[mention[0]], node)
-			word_colours[mention[0], head[0][0]][2] = True
+			heads.add((mention[0], head[0][0]))
 	for mention in auto_mention_set:
-		if mention in gold_mentions:
-			continue
-		for i in xrange(mention[1], mention[2]):
-			if (mention[0], i) not in word_colours:
-				word_colours[mention[0], i] = [False, False, False]
-			word_colours[mention[0], i][1] = True
 		node = gold_parses[mention[0]].get_nodes('lowest', mention[1], mention[2])
 		if node is not None:
 			head = head_finder.get_head(gold_heads[mention[0]], node)
-			word_colours[mention[0], head[0][0]][2] = True
+			heads.add((mention[0], head[0][0]))
+
+	words = defaultdict(lambda: defaultdict(lambda: [False, False]))
+	for mention in gold_mentions:
+		for i in xrange(mention[1], mention[2]):
+			words[mention[0], i][mention][0] = True
+	for mention in auto_mention_set:
+		for i in xrange(mention[1], mention[2]):
+			words[mention[0], i][mention][1] = True
+
 	# Printing
 	for sentence in xrange(len(text)):
 		output = []
-		coloured = False
 		for word in xrange(len(text[sentence])):
 			text_word = text[sentence][word]
-			if (sentence, word) in word_colours:
-				vals = word_colours[(sentence, word)]
-				colour = '0'
-				if vals[0] and vals[1]:
+			if (sentence, word) in words:
+				mention_dict = words[(sentence, word)]
+
+				missing = set()
+				for mention in mention_dict:
+					if mention_dict[mention][0] and not mention_dict[mention][1]:
+						missing.add(mention)
+				extra = set()
+				for mention in mention_dict:
+					if not mention_dict[mention][0] and mention_dict[mention][1]:
+						extra.add(mention)
+				starts = []
+				for mention in mention_dict:
+					if mention[1] == word:
+						starts.append((mention[2], mention_dict[mention], mention))
+				starts.sort(reverse=True)
+				ends = []
+				for mention in mention_dict:
+					if mention[2] - 1 == word:
+						ends.append((mention[1], mention_dict[mention], mention))
+				ends.sort(reverse=True)
+				
+				start = ''
+				for mention in starts:
+					character = ''
+					if mention[1][0] and mention[1][1]:
+						character = '{'
+					elif mention[1][0]:
+						character = '['
+					elif mention[1][1]:
+						character = '('
+					inside_missing = False
+					for emention in missing:
+						if emention[1] <= mention[2][1] and mention[2][2] <= emention[2]:
+							inside_missing = True
+					inside_extra = False
+					for emention in extra:
+						if emention[1] <= mention[2][1] and mention[2][2] <= emention[2]:
+							inside_extra = True
+					colour = '15'
+					if inside_missing and inside_extra:
+						colour = '5'
+					elif inside_missing:
+						colour = '4'
+					elif inside_extra:
+						colour = '1'
+					start += "\033[38;5;{}m{}\033[0m".format(colour, character)
+				
+				end = ''
+				for mention in ends:
+					character = ''
+					if mention[1][0] and mention[1][1]:
+						character = '}'
+					elif mention[1][0]:
+						character = ']'
+					elif mention[1][1]:
+						character = ')'
+					inside_missing = False
+					for emention in missing:
+						if emention[1] <= mention[2][1] and mention[2][2] <= emention[2]:
+							inside_missing = True
+					inside_extra = False
+					for emention in extra:
+						if emention[1] <= mention[2][1] and mention[2][2] <= emention[2]:
+							inside_extra = True
+					colour = '15'
+					if inside_missing and inside_extra:
+						colour = '5'
+					elif inside_missing:
+						colour = '4'
+					elif inside_extra:
+						colour = '1'
+					end += "\033[38;5;{}m{}\033[0m".format(colour, character)
+				
+				colour = '15'
+				if len(extra) > 0 and len(missing) > 0:
 					colour = '5'
-				elif vals[1]:
-					colour = '1'
-				elif vals[0]:
+				elif len(missing) > 0:
 					colour = '4'
+				elif len(extra) > 0:
+					colour = '1'
 				# head
-				if vals[2]:
+				if (sentence, word) in heads:
 					colour += ';4'
-				coloured = True
-				text_word = "\033[38;5;" + colour + "m" + text_word + "\033[0m"
+				text_word = start + "\033[38;5;{}m{}\033[0m".format(colour, text_word) + end
 			output.append(text_word)
 			word += 1
-		if coloured:
-			print >> out, ' '.join(output) + '\n'
-		else:
-			print >> out, ' '.join(output),
-		# Check if the sentence hs nested mentions, print them if so
-		printed = False
-		glist, alist = mentions_by_sentence[sentence]
-		done = set()
-		for mention1 in glist:
-			subset = set([mention1])
-			for mention2 in glist:
-				if mention1 == mention2 or mention2 in done:
-					continue
-				if mention1[1] <= mention2[1] and mention2[2] <= mention1[2]:
-					subset.add(mention2)
-			if len(subset) == 1:
-				continue
-			done.update(subset)
-			for mention in subset:
-				if mention in auto_mention_set:
-					print >> out, '\t', mention_text(text, mention, gold_parses, gold_heads)
-				else:
-					print >> out, '\t', mention_text(text, mention, gold_parses, gold_heads, "\033[38;5;4m")
-				printed = True
-
-		for mention1 in alist:
-			subset = set([mention1])
-			for mention2 in alist:
-				if mention1 == mention2 or mention2 in done or mention1 in done:
-					continue
-				if mention1[1] <= mention2[1] and mention2[2] <= mention1[2]:
-					subset.add(mention2)
-			if len(subset) == 1:
-				continue
-			done.update(subset)
-			for mention in subset:
-				if mention in gold_mentions:
-					print >> out, '\t', mention_text(text, mention, gold_parses, gold_heads)
-				else:
-					print >> out, '\t', mention_text(text, mention, gold_parses, gold_heads, "\033[38;5;1m")
-				printed = True
-
-		if printed:
-			print >> out, '\n'
+		print >> out, ' '.join(output) + '\n'
 		sentence += 1
 
 if __name__ == '__main__':
-	#TODO: Add option to resolve span errors first
-	init.argcheck(sys.argv, 4, 4, "Print coreference resolution errors", "<prefix> <gold_dir> <test>")
+	init.argcheck(sys.argv, 4, 5, "Print coreference resolution errors", "<prefix> <gold_dir> <test> [resolve span errors first? T | F]")
 
 	auto = coreference_reading.read_conll_coref_system_output(sys.argv[3])
 	gold = coreference_reading.read_conll_matching_files(auto, sys.argv[2])
@@ -433,6 +577,8 @@ if __name__ == '__main__':
 	             out_mention_list, 
 	             out_mention_text]
 	init.header(sys.argv, out_files)
+
+	print >> out_mention_text, print_mention_text.__doc__
 
 	for doc in auto:
 		for part in auto[doc]:
@@ -454,6 +600,9 @@ if __name__ == '__main__':
 			auto_cluster_set = coreference.set_of_clusters(auto_clusters)
 			gold_mention_set = coreference.set_of_mentions(gold_clusters)
 			auto_mention_set = coreference.set_of_mentions(auto_clusters)
+
+			if len(sys.argv) > 4 and sys.argv[4] == 'T':
+				match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clusters, auto_cluster_set, text, gold_parses, gold_heads)
 			
 			# Coloured mention output
 			print_mention_list(out_mention_list, gold_mentions, auto_mention_set)
