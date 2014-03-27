@@ -32,7 +32,7 @@ def multifile_process(path, call):
 	gold = defaultdict(lambda: {})
 	for filename in glob.glob(path):
 		name, part = convert_underscored_filename(filename)
-		if "tc/ch/00/ch" in name:
+		if "tc/ch/00/ch" in filename and '9' not in filename:
 			val = int(name.split('_')[-1]) * 10 - 1
 			name = "tc/ch/00/ch_%04d" % val
 		coreference_reading.read_conll_matching_file(gold_src, name, gold)
@@ -106,7 +106,7 @@ if __name__ == '__main__':
 		'stanford': read_stanford,
 		'uiuc': read_uiuc
 	}
-	init.argcheck(sys.argv, 5, 5, "Translate a system output into the CoNLL format", "<prefix> <[{}]> <dir | file> <gold dir>".format(','.join(formats.keys())))
+	init.argcheck(sys.argv, 5, 6, "Translate a system output into the CoNLL format", "<prefix> <[{}]> <dir | file> <gold dir>".format(','.join(formats.keys())))
 
 	out = open(sys.argv[1] + '.out', 'w')
 	log = open(sys.argv[1] + '.log', 'w')
