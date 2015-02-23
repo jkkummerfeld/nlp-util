@@ -105,9 +105,9 @@ def collins_find_heads(tree, head_map=None):
 			collins_NP(tree, head_map)
 		else:
 			# TODO: Consider alternative error announcement means
-			if tree.label not in ['ROOT', 'TOP', 'S1', '']:
-				print >> sys.stderr, "Unknown Label: %s" % tree.label
-				print >> sys.stderr, "In tree:", tree.root()
+###			if tree.label not in ['ROOT', 'TOP', 'S1', '']:
+###				print >> sys.stderr, "Unknown Label: %s" % tree.label
+###				print >> sys.stderr, "In tree:", tree.root()
 			add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
 		return head_map
 	

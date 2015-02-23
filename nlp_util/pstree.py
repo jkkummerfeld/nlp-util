@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from collections import defaultdict
 
@@ -143,7 +142,14 @@ class PSTree:
 		'''Check that the parents and spans are consistent with the tree
 		structure.'''
 		ans = True
-		if len(self.subtrees) > 0:
+		if self.is_terminal():
+			if self.is_trace() and self.span[0] != self.span[1]:
+				print "non-zero span at a terminal trace node"
+				ans = False
+			elif self.span[0] + 1 != self.span[1]:
+				print "span changes by value other than 1 at non-trace terminal node"
+				ans = False
+		else:
 			for i in xrange(len(self.subtrees)):
 				subtree = self.subtrees[i]
 				if subtree.parent != self:

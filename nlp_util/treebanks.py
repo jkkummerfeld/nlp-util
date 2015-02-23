@@ -226,7 +226,7 @@ def apply_collins_rules(tree, in_place=True):
   tree.calculate_spans()
   return tree
 
-def homogenise_tree(tree, tag_set=ptb_tag_set):
+def homogenise_tree(tree, tag_set=ptb_nonterminals):
   '''Change the top of the tree to be of a consistent form.
 
   >>> tree = tree_from_text("( (S (NP (NNP Example))))", True)
