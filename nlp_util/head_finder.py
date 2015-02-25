@@ -39,6 +39,10 @@ pennconverter_mapping_table = {
   'META': ('right', [])
 }
 
+# Falgs from pennconverter
+wh_heads = False
+
+
 # Collins
 collins_mapping_table = {
   'ADJP': ('right', ['NNS', 'QP', 'NN', '$', 'ADVP', 'JJ', 'VBN', 'VBG', 'ADJP', 'JJR', 'NP', 'JJS', 'DT', 'FW', 'RBR', 'RBS', 'SBAR', 'RB']),
@@ -111,27 +115,26 @@ def add_if_match(tree, options, head_map, reverse=False):
   return False
 
 def collins_NP(tree, head_map):
-  #TODO:todo Extra special cases for NPs
+  #TODO:todo handle NML properly
+  #TODO:todo Extra cases for NPs:
 ### Ignore the row for NPs -- I use a special set of rules for this. For these
 ### I initially remove ADJPs, QPs, and also NPs which dominate a possesive 
 ### (tagged POS, e.g.  (NP (NP the man 's) telescope ) becomes 
 ### (NP the man 's telescope)). These are recovered as a post-processing stage 
 ### after parsing. The following rules are then used to recover the NP head:
 
-  #TODO:todo handle NML properly
-
   if get_head(head_map, tree.subtrees[-1])[2] == 'POS':
     add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
     return
-  if add_if_match(tree, set(['NN', 'NNP', 'NNPS', 'NNS', 'NX', 'POS', 'JJR']), head_map, True):
+  if add_if_match(tree, {'NN', 'NNP', 'NNPS', 'NNS', 'NX', 'POS', 'JJR'}, head_map, True):
     return
-  if add_if_match(tree, set(['NP', 'NML']), head_map):
+  if add_if_match(tree, {'NP', 'NML'}, head_map):
     return
-  if add_if_match(tree, set(['$', 'ADJP', 'PRN']), head_map, True):
+  if add_if_match(tree, {'$', 'ADJP', 'PRN'}, head_map, True):
     return
-  if add_if_match(tree, set(['CD']), head_map, True):
+  if add_if_match(tree, {'CD'}, head_map, True):
     return
-  if add_if_match(tree, set(['JJ', 'JJS', 'RB', 'QP']), head_map, True):
+  if add_if_match(tree, {'JJ', 'JJS', 'RB', 'QP'}, head_map, True):
     return
   add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
 

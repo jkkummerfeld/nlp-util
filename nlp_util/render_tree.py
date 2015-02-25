@@ -3,6 +3,8 @@
 # vim: set ts=2 sw=2 noet:
 '''Various string representations of trees.'''
 
+import string
+
 import pstree, parse_errors, head_finder, treebanks
 
 # TODO:todo Fix handling of traces throughout
@@ -469,40 +471,84 @@ def text_coloured_errors_old(tree, gold=None, depth=0, single_line=False, missin
           ans += start_missing + ')' + end_colour
   return ans
 
+def check_tree(edges):
+  points = set()
+  for edge in edges:
+    points.add(edge[0])
+    points.add(edge[1])
+  return len(points) == (len(edges) + 1)
+
+def check_proj(edges):
+  for edge1 in edges:
+    for edge2 in edges:
+      if edge1[0] < edge2[0] < edge1[1] < edge2[1]:
+        return False
+      if edge2[0] < edge1[0] < edge2[1] < edge1[1]:
+        return False
+  return True
+
+def check_1ec(edges):
+  edge_sets = {}
+  for edge1 in edges:
+    for edge2 in edges:
+      if edge1[0] < edge2[0] < edge1[1] < edge2[1]:
+        if edge1 not in edge_sets:
+          edge_sets[edge1] = (set(), set())
+        edge_sets[edge1][0].add(edge2[0])
+        edge_sets[edge1][1].add(edge2[1])
+      if edge2[0] < edge1[0] < edge2[1] < edge1[1]:
+        if edge1 not in edge_sets:
+          edge_sets[edge1] = (set(), set())
+        edge_sets[edge1][0].add(edge2[1])
+        edge_sets[edge1][1].add(edge2[0])
+  ans = True
+  for edge in edge_sets:
+    edge_set = edge_sets[edge]
+    if len(edge_set[0]) > 1 and len(edge_set[1]) > 1:
+      ans = False
+      print edge, edge_set
+  return ans
+
 def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
-  if used is None:
+  init = used is None
+  if init:
     used = set()
     parse.calculate_wordspans()
     traces = treebanks.resolve_traces(parse)
     base_parse = treebanks.remove_traces(parse, False)
     head_map = head_finder.pennconverter_find_heads(base_parse)
-    for node in pstree.TreeIterator(parse):
-      head = head_finder.get_head(head_map, node, True)
-      print head, node.span, node.label, text_words(node)
+###    for node in pstree.TreeIterator(parse):
+###      head = head_finder.get_head(head_map, node, True)
+###      print head, node.span, node.label, text_words(node)
 
   # Prefix
-  ans = ''
+  ans = ['']
   if depth == 0:
     last_open = True
     for line in text_tree(parse, False, True).split("\n"):
       if last_open and len(line.strip()) > 2 and line.strip()[0] == '(' and line.strip()[-1] == ')':
-        ans += " {}".format(line.strip())
+        ans[-1] += " {}".format(line.strip())
         if line.strip()[-2] != ')':
           last_open = True
         else:
           last_open = False
       else:
-        ans += "\n# ::ptb  {}".format(line)
+        ans.append("# ::ptb  {}".format(line))
         last_open = True
     words = text_words(parse).split()
-    ans += "\n# ::snt"
+    ans.append("# ::snt")
     for i, w in enumerate(words):
-      ans += "  {} {}".format(i, w)
-    ans += "\n"
+      ans[-1] += "  {} {}".format(i + 1, w)
+    ans.append("")
 
-  # Print unary chains first
+  if init:
+    label = treebanks.remove_coindexation_from_label(parse.label)
+    head = head_finder.get_head(head_map, parse, True)
+    ans.append("{}.{} --{}--> 0".format(head[0][1], head[2], label))
+
+  # Print unary chain
   chead = head_finder.get_head(head_map, parse, True)
-  top_of_chain = not parse.is_trace()
+  top_of_chain = True
   if parse.parent is not None:
     phead = head_finder.get_head(head_map, parse.parent, True)
     if chead == phead:
@@ -516,7 +562,8 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
           sub = subtree
           break
       chain.append(treebanks.remove_coindexation_from_label(sub.label))
-    ans += "{} {}.{}\n".format('_'.join(chain[:-1]), sub.span[0], chain[-1])
+    if not sub.is_trace():
+      ans.append("{}.{} {}".format(sub.span[1], chain[-1], '_'.join(chain[:-1])))
 
   if parse.word is None:
     # Normal edges
@@ -525,9 +572,9 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
       if shead is not None and chead is not None:
         if shead[0] != chead[0]:
           plabel = treebanks.remove_coindexation_from_label(parse.label)
-          ans += "{} <--{}-- {}.{}\n".format(chead[0][0], plabel, shead[0][0], shead[2])
+          ans.append("{}.{} --{}--> {}".format(shead[0][1], shead[2], plabel, chead[0][1]))
       else:
-        ans += "Fail 1 on {} {} {} <--- {} {} {} {}\n".format(chead, parse.span, parse.label, shead, subparse.span, subparse.label, subparse.word_yield())
+        ans.append("Fail 1 on {} {} {} <--- {} {} {} {}".format(chead, parse.span, parse.label, shead, subparse.span, subparse.label, subparse.word_yield()))
     signature = (parse.span, parse.word, parse.label)
 
     # Traces
@@ -553,9 +600,9 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
           if phead is not None and thead is not None:
             ilabel = treebanks.remove_coindexation_from_label(subparse.parent.label)
             plabel = treebanks.remove_coindexation_from_label(parent.label)
-            ans += "{} <--{}_{}-- {}.{} (trace)\n".format(phead[0][0], plabel, ilabel,  thead[0][0], thead[2])
+            ans.append("{}.{} --{}_{}--> {} (trace)".format(thead[0][1], thead[2], ilabel, plabel, phead[0][1]))
           else:
-            ans += "Fail 2 on {} {} {} <--- {} {} {}  {} (trace)\n".format(thead, parse.span, parse.label, shead, subparse.span, subparse.label, subparse.word_yield())
+            ans.append("Fail 2 on {} {} {} <--- {} {} {}  {} (trace)".format(thead, parse.span, parse.label, shead, subparse.span, subparse.label, subparse.word_yield()))
       if num in traces[2]:
         parent = parse.parent
         phead = head_finder.get_head(head_map, parent, True)
@@ -564,12 +611,58 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
           if phead is not None and shead is not None:
             ilabel = treebanks.remove_coindexation_from_label(subparse.parent.label)
             plabel = treebanks.remove_coindexation_from_label(parent.label)
-            ans += "{} <--{}_{}-- {}.{} (trace)\n".format(phead[0][0], plabel, ilabel, shead[0][0], shead[2])
+            ans.append("{}.{} --{}_{}--> {} (trace)".format(shead[0][1], shead[2], ilabel, plabel, phead[0][1]))
           else:
-            ans += "Fail 3 on {} {} {} <--- {} {} {} {} (trace)\n".format(phead, parent.span, parent.label, shead, subparse.span, subparse.label, subparse.word_yield())
+            ans.append("Fail 3 on {} {} {} <--- {} {} {} {} (trace)".format(phead, parent.span, parent.label, shead, subparse.span, subparse.label, subparse.word_yield()))
     for subparse in parse.subtrees:
-      ans += hag_format(subparse, used, depth + 1, head_map, traces)
-  return ans
+      for part in hag_format(subparse, used, depth + 1, head_map, traces):
+        if part.strip() != '':
+          ans.append(part)
+  if init:
+    to_sort = {}
+    to_retain = []
+    for part in ans:
+      if part.startswith('#') or 'Fail' in part:
+        to_retain.append(part)
+      else:
+        if len(part) == 0 or part[0] not in string.digits:
+          to_retain.append(part)
+        else:
+          num = int(part.split()[0].split('.')[0])
+          if '--' in part:
+            if num not in to_sort:
+              to_sort[num] = []
+            to_sort[num].append(part)
+    ans = '\n'.join(to_retain) + '\n'
+    keys = to_sort.keys()
+    keys.sort()
+    edges = []
+    for key in keys:
+      ans += to_sort[key][0].split()[0]
+      for part in to_sort[key]:
+        part = ' '.join(part.split()[1:])
+        ans += ' ' + part
+        num = part.split()[-1]
+        if num == '(trace)':
+          num = part.split()[-2]
+        edges.append((int(key), int(num)))
+      ans += '\n'
+    graph_type = 'Graph type - '
+    if check_proj(edges):
+      graph_type += " proj"
+    elif check_1ec(edges):
+      graph_type += "  1ec"
+    else:
+      graph_type += "other"
+    if check_tree(edges):
+      graph_type += " tree"
+    else:
+      graph_type += " graph"
+    ans += graph_type + '\n'
+    ans += '-->\n'
+    return ans
+  else:
+    return ans
 
 def cut_text_below(text, depth):
   '''Simplify text to only show the top parts of a tree
