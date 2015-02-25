@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import string
+
 from pstree import *
 
 # TODO: Handle malformed input with trees that have random stuff instead of symbols
@@ -137,11 +139,38 @@ def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init
   tree.span = (oleft, left)
   return tree
 
+def resolve_traces(parse, mapping=None):
+  if mapping is None:
+    mapping = ({}, {}, {})
+  if len(parse.label.split('-')) > 0 and len(parse.label.split('-')[-1]) > 0 and parse.label.split('-')[-1][0] in string.digits:
+    signature = (parse.span, parse.word, parse.label)
+    num = parse.label.split('-')[-1]
+    mapping[0][signature] = (num, parse)
+  if parse.word is not None and "*-" in parse.word:
+    num = parse.word.split('-')[-1]
+    if num not in mapping[1]:
+      mapping[1][num] = []
+    mapping[1][num].append(parse)
+  if len(parse.label.split('=')) > 0 and parse.label.split('=')[-1][0] in string.digits:
+    num = parse.label.split('=')[-1]
+    if num not in mapping[2]:
+      mapping[2][num] = []
+    mapping[2][num].append(parse)
+  for subparse in parse.subtrees:
+    resolve_traces(subparse, mapping)
+  return mapping
+
 def remove_traces(tree, in_place=True):
   '''Adjust the tree to remove traces.
 
   >>> tree = tree_from_text("(ROOT (S (PP (IN By) (NP (CD 1997))) (, ,) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed) (NP (-NONE- *-6))))) (. .)))")
-  >>> remove_traces(tree, False)
+  >>> ntree = remove_traces(tree, False)
+  >>> otree = remove_traces(tree, True)
+  >>> otree == tree
+  True
+  >>> ntree == tree
+  False
+  >>> print ntree
   (ROOT (S (PP (IN By) (NP (CD 1997))) (, ,) (NP (NP (ADJP (RB almost) (DT all)) (VBG remaining) (NNS uses)) (PP (IN of) (NP (JJ cancer-causing) (NN asbestos)))) (VP (MD will) (VP (VB be) (VP (VBN outlawed)))) (. .)))
   '''
   return remove_nodes(tree, PSTree.is_trace, in_place)
@@ -154,6 +183,26 @@ def split_label_type_and_function(label):
     for part in cur:
       parts += part.split('-')
   return parts
+
+def remove_coindexation_from_label(label):
+  if len(label) > 0 and label[-1] in string.digits:
+    while len(label) > 0 and label[-1] in string.digits or label[-1] in '-=':
+      label = label[:-1]
+  return label
+
+def remove_coindexation(tree, in_place=True):
+  '''Adjust the tree to remove coindexation info.'''
+  label = remove_coindexation_from_label(tree.label)
+  if in_place:
+    for subtree in tree.subtrees:
+      remove_coindexation(subtree, True)
+    tree.label = label
+  else:
+    subtrees = [remove_coindexation(subtree, False) for subtree in tree.subtrees]
+    tree = PSTree(tree.word, label, tree.span, None, subtrees)
+    for subtree in subtrees:
+      subtree.parent = tree
+  return tree
 
 def remove_function_tags(tree, in_place=True):
   '''Adjust the tree to remove function tags on labels.

@@ -23,5 +23,5 @@ if __name__ == '__main__':
 	doctest.testmod()
 
 	tree = pstree.tree_from_text("(ROOT (SINV (S (NP (PRP It)) (VP (AUX 's) (NP (NP (DT a) (NN problem)) (SBAR (WHNP (WDT that)) (S (ADVP (RB clearly)) (VP (AUX has) (S (VP (TO to) (VP (VB be) (VP (VBN resolved))))))))))) (VP (VBD said)) (NP (NP (NNP David) (NNP Cooke)) (NP (NP (JJ executive) (NN director)) (PP (IN of) (NP (DT the) (NNP RTC)))))))")
-	head_map = head_finder.collins_find_heads(tree)
+	head_map = head_finder.pennconverter_find_heads(tree)
 	print headed_tree(tree, head_map)
