@@ -39,6 +39,7 @@ pennconverter_mapping_table = {
   'META': ('right', [])
 }
 
+# TODO: Handle the various flags defined for pennconverter
 # Falgs from pennconverter
 wh_heads = False
 

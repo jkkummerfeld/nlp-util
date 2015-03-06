@@ -506,17 +506,26 @@ def check_1ec(edges):
     edge_set = edge_sets[edge]
     if len(edge_set[0]) > 1 and len(edge_set[1]) > 1:
       ans = False
-      print edge, edge_set
+      print "The 1EC violation is:", edge, edge_set
   return ans
 
-def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
+def hag_format(parse, used=None, depth=0, head_map=None, traces=None, edges=None):
   init = used is None
   if init:
     used = set()
     parse.calculate_wordspans()
     traces = treebanks.resolve_traces(parse)
+    for signature in traces[0]:
+      print "Trace 0", signature, traces[0][signature]
+    for num in traces[1]:
+      for tparse in traces[1][num]:
+        print "Trace 1", num, tparse.label, tparse.span, tparse
+    for num in traces[2]:
+      for tparse in traces[2][num]:
+        print "Trace 2", num, tparse.label, tparse.span, tparse
     base_parse = treebanks.remove_traces(parse, False)
     head_map = head_finder.pennconverter_find_heads(base_parse)
+    edges = []
 ###    for node in pstree.TreeIterator(parse):
 ###      head = head_finder.get_head(head_map, node, True)
 ###      print head, node.span, node.label, text_words(node)
@@ -534,7 +543,10 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
           last_open = False
       else:
         ans.append("# ::ptb  {}".format(line))
-        last_open = True
+        if line.strip()[-2] != ')':
+          last_open = True
+        else:
+          last_open = False
     words = text_words(parse).split()
     ans.append("# ::snt")
     for i, w in enumerate(words):
@@ -544,52 +556,92 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
   if init:
     label = treebanks.remove_coindexation_from_label(parse.label)
     head = head_finder.get_head(head_map, parse, True)
-    ans.append("{}.{} --{}--> 0".format(head[0][1], head[2], label))
+    cyclic_info = ' (normal)'
+    cur = parse
+    changed = True
+    while changed:
+      signature = (cur.span, cur.word, cur.label)
+      if signature in traces[0]:
+        cyclic_info = " (structural cyclic)"
+      changed = False
+      for subparse in cur.subtrees:
+        if head == head_finder.get_head(head_map, subparse, True):
+          cur = subparse
+          changed = True
+          break
+    ans.append("{}.{} --{}--> 0{}".format(head[0][1], head[2], label, cyclic_info))
+    edges.append((head[0][1], 0))
 
   # Print unary chain
   chead = head_finder.get_head(head_map, parse, True)
-  top_of_chain = True
-  if parse.parent is not None:
-    phead = head_finder.get_head(head_map, parse.parent, True)
-    if chead == phead:
-      top_of_chain = False
-  if top_of_chain and (not parse.is_terminal()):
-    chain = [treebanks.remove_coindexation_from_label(parse.label)]
-    sub = parse
-    while not sub.is_terminal():
-      for subtree in sub.subtrees:
-        if chead == head_finder.get_head(head_map, subtree, True):
-          sub = subtree
-          break
-      chain.append(treebanks.remove_coindexation_from_label(sub.label))
-    if not sub.is_trace():
-      ans.append("{}.{} {}".format(sub.span[1], chain[-1], '_'.join(chain[:-1])))
+  if parse.is_terminal() and not parse.is_trace():
+    chain = []
+    cur = parse.parent
+    while cur is not None:
+      if chead == head_finder.get_head(head_map, cur, True):
+        chain.append(treebanks.remove_coindexation_from_label(cur.label))
+      else:
+        break
+      cur = cur.parent
+    if len(chain) > 0:
+      ans.append("{}.{} {}".format(parse.wordspan[1], parse.label, '_'.join(chain)))
 
-  if parse.word is None:
+  if not parse.is_terminal():
     # Normal edges
     for subparse in parse.subtrees:
       shead = head_finder.get_head(head_map, subparse, True)
+      # Check if this subtree is the actual structure used in a trace
+      trace_info = " (normal)"
+      cur = subparse
+      changed = True
+      while changed:
+        signature = (cur.span, cur.word, cur.label)
+        if signature in traces[0]:
+          trace_info = " (structural)" 
+          num = traces[0][signature][0]
+          if num in traces[1]:
+            trace_type = set()
+            for subparse in traces[1][num]:
+              trace_type.add(subparse.word.split('-')[0])
+            trace_info = " (structural {})".format(' '.join(list(trace_type)))
+        for num in traces[2]:
+          for tparse in traces[2][num]:
+            if signature == (tparse.span, tparse.word, tparse.label):
+              trace_info = " (structural =)" 
+        changed = False
+        for subsubparse in cur.subtrees:
+          if shead == head_finder.get_head(head_map, subsubparse, True):
+            cur = subsubparse
+            changed = True
+            break
       if shead is not None and chead is not None:
         if shead[0] != chead[0]:
           plabel = treebanks.remove_coindexation_from_label(parse.label)
-          ans.append("{}.{} --{}--> {}".format(shead[0][1], shead[2], plabel, chead[0][1]))
+          ans.append("{}.{} --{}--> {}{}".format(shead[0][1], shead[2], plabel, chead[0][1], trace_info))
+          edges.append((shead[0][1], chead[0][1]))
       else:
-        ans.append("Fail 1 on {} {} {} <--- {} {} {} {}".format(chead, parse.span, parse.label, shead, subparse.span, subparse.label, subparse.word_yield()))
-    signature = (parse.span, parse.word, parse.label)
+        ans.append("Fail 1 on {} {} {} <--- {} {} {} {} {}".format(chead, parse.span, parse.label, shead, subparse.span, subparse.label, subparse.word_yield(), trace_info))
 
     # Traces
+    signature = (parse.span, parse.word, parse.label)
     if signature in traces[0]:
       num = traces[0][signature][0]
       if num in traces[1]:
         thead = chead
         # If this is the middle of a chain of traces, follow the chain
-        if thead is None:
-          words = parse.word_yield(as_list = True)
-          if len(words) == 1 and words[0].startswith("*T*-"):
-            onum = words[0].split('-')[-1]
-            for signature in traces[0]:
-              if traces[0][signature][0] == onum:
-                thead = head_finder.get_head(head_map, traces[0][signature][1], True)
+        tparse = parse
+        working = True
+        while thead is None and working:
+          working = False
+          words = tparse.word_yield(as_list = True)
+          onum = words[0].split('-')[-1]
+          for signature in traces[0]:
+            if traces[0][signature][0] == onum:
+              tparse = traces[0][signature][1]
+              thead = head_finder.get_head(head_map, tparse, True)
+              working = True
+        if not working:
+          print "FAILED", parse
 
         for subparse in traces[1][num]:
           parent = subparse
@@ -601,8 +653,10 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
             ilabel = treebanks.remove_coindexation_from_label(subparse.parent.label)
             plabel = treebanks.remove_coindexation_from_label(parent.label)
             ans.append("{}.{} --{}_{}--> {} (trace)".format(thead[0][1], thead[2], ilabel, plabel, phead[0][1]))
+            edges.append((thead[0][1], phead[0][1]))
           else:
             ans.append("Fail 2 on {} {} {} <--- {} {} {}  {} (trace)".format(thead, parse.span, parse.label, shead, subparse.span, subparse.label, subparse.word_yield()))
+
       if num in traces[2]:
         parent = parse.parent
         phead = head_finder.get_head(head_map, parent, True)
@@ -612,10 +666,11 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
             ilabel = treebanks.remove_coindexation_from_label(subparse.parent.label)
             plabel = treebanks.remove_coindexation_from_label(parent.label)
             ans.append("{}.{} --{}_{}--> {} (trace)".format(shead[0][1], shead[2], ilabel, plabel, phead[0][1]))
+            edges.append((shead[0][1], phead[0][1]))
           else:
             ans.append("Fail 3 on {} {} {} <--- {} {} {} {} (trace)".format(phead, parent.span, parent.label, shead, subparse.span, subparse.label, subparse.word_yield()))
     for subparse in parse.subtrees:
-      for part in hag_format(subparse, used, depth + 1, head_map, traces):
+      for part in hag_format(subparse, used, depth + 1, head_map, traces, edges):
         if part.strip() != '':
           ans.append(part)
   if init:
@@ -633,10 +688,11 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
             if num not in to_sort:
               to_sort[num] = []
             to_sort[num].append(part)
+          else:
+            to_retain.append(part)
     ans = '\n'.join(to_retain) + '\n'
     keys = to_sort.keys()
     keys.sort()
-    edges = []
     for key in keys:
       ans += to_sort[key][0].split()[0]
       for part in to_sort[key]:
@@ -645,16 +701,23 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None):
         num = part.split()[-1]
         if num == '(trace)':
           num = part.split()[-2]
-        edges.append((int(key), int(num)))
       ans += '\n'
+    nedges = []
+    for edge in edges:
+      a = int(edge[0])
+      b = int(edge[1])
+      if a < b:
+        nedges.append((a, b))
+      else:
+        nedges.append((b, a))
     graph_type = 'Graph type - '
-    if check_proj(edges):
+    if check_proj(nedges):
       graph_type += " proj"
-    elif check_1ec(edges):
+    elif check_1ec(nedges):
       graph_type += "  1ec"
     else:
       graph_type += "other"
-    if check_tree(edges):
+    if check_tree(nedges):
       graph_type += " tree"
     else:
       graph_type += " graph"
