@@ -515,14 +515,14 @@ def hag_format(parse, used=None, depth=0, head_map=None, traces=None, edges=None
     used = set()
     parse.calculate_wordspans()
     traces = treebanks.resolve_traces(parse)
-    for signature in traces[0]:
-      print "Trace 0", signature, traces[0][signature]
-    for num in traces[1]:
-      for tparse in traces[1][num]:
-        print "Trace 1", num, tparse.label, tparse.span, tparse
-    for num in traces[2]:
-      for tparse in traces[2][num]:
-        print "Trace 2", num, tparse.label, tparse.span, tparse
+###    for signature in traces[0]:
+###      print "Trace 0", signature, traces[0][signature]
+###    for num in traces[1]:
+###      for tparse in traces[1][num]:
+###        print "Trace 1", num, tparse.label, tparse.span, tparse
+###    for num in traces[2]:
+###      for tparse in traces[2][num]:
+###        print "Trace 2", num, tparse.label, tparse.span, tparse
     base_parse = treebanks.remove_traces(parse, False)
     head_map = head_finder.pennconverter_find_heads(base_parse)
     edges = []
