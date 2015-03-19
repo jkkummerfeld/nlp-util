@@ -509,9 +509,10 @@ def check_1ec(edges):
       print "# 1EC_violation", edge, edge_set
   return ans
 
-def label_level(parse, head_map):
+def label_level(parse, head_map, label=None):
   head = head_finder.get_head(head_map, parse, True)
-  label = treebanks.remove_coindexation_from_label(parse.label)
+  if label is None:
+    label = treebanks.remove_coindexation_from_label(parse.label)
   count = 0
   done = False
   while not done:
@@ -614,6 +615,7 @@ def get_edges(parse, edges, spines, head_map, traces):
         # If this is the middle of a chain of traces, follow the chain
         thead = chead
         tparse = parse
+        in_chain = False
         working = True
         while thead is None and working:
           working = False
@@ -630,20 +632,31 @@ def get_edges(parse, edges, spines, head_map, traces):
                 tparse = traces[0][signature][1]
                 thead = head_finder.get_head(head_map, tparse, True)
                 working = True
+                in_chain = True
 
         for subparse in traces[1][num]:
-          slabel = treebanks.remove_coindexation_from_label(parse.label)
-          slevel = label_level(parse, head_map)
+          slabel = treebanks.remove_coindexation_from_label(tparse.label)
+          slevel = label_level(tparse, head_map)
           trace_type = '-'.join(subparse.word.split('-')[:-1])
           trace_type = "trace{}_{}_{}".format(trace_type, slabel, slevel)
           parent = subparse.parent # Attachment point
           plabel = treebanks.remove_coindexation_from_label(parent.parent.label)
+          plevel = label_level(parent.parent, head_map)
           null_wrap = treebanks.remove_coindexation_from_label(parent.label)
           while head_finder.get_head(head_map, parent, True) is None and parent.parent is not None:
             parent = parent.parent
           phead = head_finder.get_head(head_map, parent, True)
           if thead is not None:
-            edges.append((thead[0][1], plabel + '_0', phead[0][1], trace_type, null_wrap))
+            edges.append((thead[0][1], plabel + '_' + str(plevel), phead[0][1], trace_type, null_wrap))
+          elif in_chain:
+            # Not handled by the null - null case above
+            tparse = tparse.parent
+            slevel = label_level(tparse, head_map, slabel)
+            thead = head_finder.get_head(head_map, tparse, True)
+            trace_type = '-'.join(subparse.word.split('-')[:-1])
+            trace_type = "trace{}_{}_{}".format(trace_type, slabel, slevel)
+            if thead is not None:
+              edges.append((thead[0][1], plabel + '_' + str(plevel), phead[0][1], trace_type, null_wrap))
 
       # For each (P-# ... ) add a link from all (P=# ... ) that match
       if num in traces[2]:

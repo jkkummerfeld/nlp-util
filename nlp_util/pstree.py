@@ -347,6 +347,7 @@ def tree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
 
 def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
   '''Construct a PSTree from the provided split head grammar parse.'''
+  # Create spine defined non-terminals
   nodes = {}
   for line in text:
     parts = line.split()
@@ -390,9 +391,7 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
           cur.parent = parent
           nodes[num][-1].insert(len(nodes[num][-1]) - 1, cur)
 
-###  for num in nodes:
-###    print num, nodes[num]
-
+  # Link together with structural edges
   root = None
   for num in nodes:
     info = nodes[num]
@@ -424,6 +423,7 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
               break
   root.calculate_spans()
 
+  # Add traces
   trace_map = {}
   equal_map = {}
   for num in nodes:
@@ -436,6 +436,7 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
       if 'trace' in trace:
         top = None
         trace_type = trace.split('_')[0][5:].split('n')[0]
+        target_count = 0
         if trace[-1] in string.digits:
           target_count = int(trace.split('_')[-1])
           target_label = trace.split('_')[-2]
@@ -457,22 +458,27 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
               if '=' not in trace:
                 plabel = top.label
                 tid = len(trace_map) + 1
-                if (num, plabel, label_count) in trace_map:
-                  tid = trace_map[(num, plabel, label_count)]
+                if (num, plabel, target_count) in trace_map:
+                  tid = trace_map[(num, plabel, target_count)]
                 else:
-                  trace_map[(num, plabel, label_count)] = tid
+                  trace_map[(num, plabel, target_count)] = tid
                 node = PSTree(trace_type + "-" + str(tid), TRACE_LABEL)
                 parent = PSTree(None, trace_sym, subtrees=[node])
                 node.parent = parent
+                # Insert node
                 if parent.label.startswith("NP-SBJ"):
                   subparse.subtrees.insert(0, parent)
                 elif parent.label.startswith("NP") or '?' in trace_type:
                   # Find verb and insert afterwards
+                  inserted = False
                   for i in range(len(subparse.subtrees)):
                     sibling = subparse.subtrees[i]
                     if sibling.label.startswith("V") and sibling.is_terminal():
                       subparse.subtrees.insert(i+1, parent)
+                      inserted = True
                       break
+                  if not inserted:
+                    subparse.subtrees.append(parent)
                 else:
                   subparse.subtrees.append(parent)
                 parent.parent = subparse
@@ -481,16 +487,18 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
                 tid = len(trace_map) + 1
                 onum = None
                 for tnum in nodes:
-                  if nodes[tnum][4][-1] == subparse:
-                    onum = tnum
+                  for node in nodes[tnum][4]:
+                    if node == subparse:
+                      onum = tnum
                 if onum is None:
                   print "Did not find", subparse
                 else:
-                  if (onum, label, label_count) in trace_map:
-                    tid = trace_map[(onum, label, label_count)]
+                  if (onum, label, target_count) in trace_map:
+                    tid = trace_map[(onum, label, target_count)]
                   else:
-                    trace_map[(onum, label, label_count)] = tid
-                  equal_map[(num, trace_sym, label_count)] = tid
+                    trace_map[(onum, label, target_count)] = tid
+                  equal_map[(num, trace_sym, target_count)] = tid
+  # Add co-indexation
   for num, label, label_count in trace_map:
     count = -1
     for subparse in nodes[num][4]:
