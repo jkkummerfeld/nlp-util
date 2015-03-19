@@ -231,7 +231,6 @@ def pennconverter_find_heads(tree, head_map=None):
   if coord:
     if not add_if_match(tree, {'CC', 'CONJP'}, head_map, True):
       if not add_if_match(tree, {',', ':'}, head_map, True):
-        print "Adding last conjunct for", tree.word_yield()
         add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
     return head_map
   

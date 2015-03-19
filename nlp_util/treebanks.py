@@ -37,6 +37,7 @@ ontonores_pos = set(["$", "''", ",", ":", "ABBREV", "AD", "ADD", "ADJ", "ADV",
 "VBZ", "VC", "VE", "VERB", "VOC", "VV", "WDT", "WP", "WP$", "WRB", "X", "XX",
 "``"])
 
+# TODO: Consider extending this to other bracket types too
 word_to_word_mapping = {
   '{': '-LCB-',
   '}': '-RCB-'
@@ -139,25 +140,62 @@ def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init
   tree.span = (oleft, left)
   return tree
 
+def get_reference(text, sep='-'):
+  if text == '0':
+    return None
+  for char in text.split(sep)[-1]:
+    if char not in string.digits:
+      return None
+  if len(text.split(sep)[-1]) == 0:
+    return None
+  return text.split(sep)[-1]
+
 def resolve_traces(parse, mapping=None):
   if mapping is None:
-    mapping = ({}, {}, {})
-  if len(parse.label.split('-')) > 0 and len(parse.label.split('-')[-1]) > 0 and parse.label.split('-')[-1][0] in string.digits:
-    signature = (parse.span, parse.word, parse.label)
-    num = parse.label.split('-')[-1]
+    mapping = ({}, {}, {}, {}, {}, {})
+  # 0 - The observed position of words
+  # 1 - Null position that can be traced somewhere
+  # 2 - The observed position of words that match other observed words
+  # 3 - The null position of unobserved words that are referenced
+  # 4 - The null position of unobserved words
+
+  # 0 - The observed position of words
+  plabel = parse.label
+  if '-' in plabel and '=' not in plabel and get_reference(plabel) is not None:
+    signature = (parse.span, plabel)
+    num = plabel.split('-')[-1]
     mapping[0][signature] = (num, parse)
-  if parse.word is not None and "*-" in parse.word:
+
+  # 1 - Null position that can be traced somewhere
+  if plabel == '-NONE-' and get_reference(parse.word) is not None:
     num = parse.word.split('-')[-1]
     if num not in mapping[1]:
       mapping[1][num] = []
     mapping[1][num].append(parse)
-  if len(parse.label.split('=')) > 0 and parse.label.split('=')[-1][0] in string.digits:
-    num = parse.label.split('=')[-1]
+
+  # 2 - The observed position of words that match other observed words
+  if '=' in plabel and get_reference(plabel, '=') is not None:
+    num = plabel.split('=')[-1]
     if num not in mapping[2]:
       mapping[2][num] = []
     mapping[2][num].append(parse)
+
+  # 3 and 4 - The null position of unobserved words
+  if plabel == '-NONE-' and get_reference(parse.word) is None:
+    ref = None
+    parent = parse
+    while parent.parent is not None and parent.wordspan[0] == parent.wordspan[1]:
+      ref = get_reference(parent.label)
+      parent = parent.parent
+    signature = (parent.span, parent.label)
+    mapping[4][signature] = (parent, parse)
+    # 3 - The null position of unobserved words that are referenced
+    if ref is not None:
+      mapping[3][signature] = (parent, parse, ref)
+
   for subparse in parse.subtrees:
     resolve_traces(subparse, mapping)
+
   return mapping
 
 def remove_traces(tree, in_place=True):
@@ -330,7 +368,6 @@ def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
     char = source.read(1)
     if char == '':
       return None
-      break
     if char == '\n' and cur_text == ' ' and blank_line_coverage:
       return "Empty"
     if char in '\n\t':
@@ -350,6 +387,51 @@ def ptb_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
         break
 
   tree = tree_from_text(cur_text, allow_empty_labels, allow_empty_words)
+  ptb_cleaning(tree)
+  return tree
+
+def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False, blank_line_coverage=False):
+  '''Read a single tree from the given file of split head grammar parses.
+  
+  >>> from StringIO import StringIO
+  >>> file_text = """# Parse  (ROOT
+  ... # Parse   (S
+  ... # Parse     (NP-SBJ-1 (DT A) (NN record) (NN date))
+  ... # Parse     (VP (VBZ has) (RB n't)
+  ... # Parse       (VP (VBN been)
+  ... # Parse         (VP (VBN set)
+  ... # Parse           (NP (-NONE- *-1)))))
+  ... # Parse     (. .)))
+  ... # Sent  1 A  2 record  3 date  4 has  5 n't  6 been  7 set  8 .
+  ... # Trace 0 ((0, 3), 'NP-SBJ-1') ('1', (NP-SBJ-1 (DT A) (NN record) (NN date)))
+  ... # Trace 1 1 (-NONE- *-1) (7, 8)
+  ... # Graph type -   1ec graph
+  ... 1 DT _ | 3 NP-SBJ _ _
+  ... 2 NN _ | 3 NP-SBJ _ _
+  ... 3 NN NP-SBJ | 4 S * _ | 7 VP trace_* NP
+  ... 4 VBZ VP_S_ROOT | 0 ROOT normal _
+  ... 5 RB _ | 4 VP _ _
+  ... 6 VBN VP | 4 VP _ _
+  ... 7 VBN VP | 6 VP _ _
+  ... 8 . _ | 4 S _ _
+  ... """
+  >>> in_file = StringIO(file_text)
+  >>> shp_read_tree(in_file)
+  (ROOT (S (NP-SBJ-1 (DT A) (NN record) (NN date)) (VP (VBZ has) (RB n't) (VP (VBN been) (VP (VBN set) (NP (-NONE- *-1))))) (. .)))'''
+  cur_text = []
+  while True:
+    line = source.readline()
+    if line == '':
+      return None
+    line = line.strip()
+    if len(line) == 0:
+      break
+    if line[0] == '#':
+      continue
+    assert line[0] in string.digits
+    cur_text.append(line)
+
+  tree = tree_from_shp(cur_text)
   ptb_cleaning(tree)
   return tree
 

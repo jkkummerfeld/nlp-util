@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import re
+import re, string
 
 from collections import defaultdict
 
@@ -139,25 +139,19 @@ class PSTree:
     ans += ')'
     return ans
 
-  def calculate_spans(self, left=0):
+  def calculate_spans(self, left=0, wordleft=0):
     '''Update the spans for every node in this tree.'''
     right = left
+    wordright = wordleft
     if self.is_terminal():
+      if not self.is_trace():
+        wordright += 1
       right += 1
     for subtree in self.subtrees:
-      right = subtree.calculate_spans(right)
+      right, wordright = subtree.calculate_spans(right, wordright)
     self.span = (left, right)
-    return right
-
-  def calculate_wordspans(self, left=0):
-    '''Update the word spans (ignoring traces) for every node in this tree.'''
-    right = left
-    if self.is_terminal() and not self.is_trace():
-      right += 1
-    for subtree in self.subtrees:
-      right = subtree.calculate_wordspans(right)
-    self.wordspan = (left, right)
-    return right
+    self.wordspan = (wordleft, wordright)
+    return right, wordright
 
   def check_consistency(self):
     '''Check that the parents and spans are consistent with the tree
@@ -348,8 +342,172 @@ def tree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
       word += char
   if cur is not None:
     raise Exception("Text did not include complete tree\n%s" % text)
+  root.calculate_spans()
   return root
 
+def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
+  '''Construct a PSTree from the provided split head grammar parse.'''
+  nodes = {}
+  for line in text:
+    parts = line.split()
+    num = int(parts[0])
+    word = parts[1]
+    POS = parts[2]
+    spine = parts[3]
+    edges = line.split(" | ")[1:]
+    nodes[num] = (word, POS, spine, edges, [PSTree(word, POS, (num - 1, num))])
+    if spine != '_':
+      # tokenise
+      sparts = ['']
+      in_braces = False
+      for char in spine:
+        if char == '(':
+          in_braces = True
+          sparts.append('')
+        elif char == ')':
+          in_braces = False
+        if not in_braces and char == '_':
+          sparts.append('')
+        else:
+          sparts[-1] += char
+
+      for symbol in sparts:
+        if symbol[0] != '(':
+          node = PSTree(None, symbol, (num - 1, num), None, [nodes[num][4][-1]])
+          nodes[num][-1].append(node)
+        else:
+          subparts = symbol[1:-1].split('_')
+          subparts.reverse()
+          cur = PSTree(subparts[0], TRACE_LABEL, (num - 1, num - 1))
+          for part in subparts[1:]:
+            node = PSTree(None, part, (num - 1, num - 1), None, [cur])
+            cur = node
+          parent = nodes[num][4][-1]
+          if cur.label.startswith("NP-SBJ") or (subparts[0] == "0" and not cur.label.startswith("SBAR")):
+            parent.subtrees.insert(0, cur)
+          else:
+            parent.subtrees.append(cur)
+          cur.parent = parent
+          nodes[num][-1].insert(len(nodes[num][-1]) - 1, cur)
+
+###  for num in nodes:
+###    print num, nodes[num]
+
+  root = None
+  for num in nodes:
+    info = nodes[num]
+    for edge in info[3]:
+      pnum, label, trace, trace_sym = edge.split()
+      label, label_count = label.split('_')
+      label_count = int(label_count)
+      top = info[4][-1]
+      pnum = int(pnum)
+      if label == 'ROOT':
+        root = top
+        continue
+      if 'trace' not in trace:
+        count = -1
+        for subparse in nodes[pnum][4]:
+          if subparse.label == label:
+            count += 1
+            if count == label_count:
+              top.parent = subparse
+              assigned = False
+              for pos in range(len(subparse.subtrees)):
+                sibling = subparse.subtrees[pos]
+                if sibling.span[0] >= top.span[1] and sibling.span[0] != sibling.span[1]:
+                  subparse.subtrees.insert(pos, top)
+                  assigned = True
+                  break
+              if not assigned:
+                subparse.subtrees.append(top)
+              break
+  root.calculate_spans()
+
+  trace_map = {}
+  equal_map = {}
+  for num in nodes:
+    info = nodes[num]
+    for edge in info[3]:
+      pnum, label, trace, trace_sym = edge.split()
+      label, label_count = label.split('_')
+      label_count = int(label_count)
+      pnum = int(pnum)
+      if 'trace' in trace:
+        top = None
+        trace_type = trace.split('_')[0][5:].split('n')[0]
+        if trace[-1] in string.digits:
+          target_count = int(trace.split('_')[-1])
+          target_label = trace.split('_')[-2]
+          count = -1
+          for subparse in info[4]:
+            if subparse.label == target_label:
+              count += 1
+              if count == target_count:
+                top = subparse
+                break
+        if top is None:
+          top = info[4][-1]
+
+        count = -1
+        for subparse in nodes[pnum][4]:
+          if subparse.label == label:
+            count += 1
+            if count == label_count:
+              if '=' not in trace:
+                plabel = top.label
+                tid = len(trace_map) + 1
+                if (num, plabel, label_count) in trace_map:
+                  tid = trace_map[(num, plabel, label_count)]
+                else:
+                  trace_map[(num, plabel, label_count)] = tid
+                node = PSTree(trace_type + "-" + str(tid), TRACE_LABEL)
+                parent = PSTree(None, trace_sym, subtrees=[node])
+                node.parent = parent
+                if parent.label.startswith("NP-SBJ"):
+                  subparse.subtrees.insert(0, parent)
+                elif parent.label.startswith("NP") or '?' in trace_type:
+                  # Find verb and insert afterwards
+                  for i in range(len(subparse.subtrees)):
+                    sibling = subparse.subtrees[i]
+                    if sibling.label.startswith("V") and sibling.is_terminal():
+                      subparse.subtrees.insert(i+1, parent)
+                      break
+                else:
+                  subparse.subtrees.append(parent)
+                parent.parent = subparse
+              else:
+                # Find the part that corresponds to this
+                tid = len(trace_map) + 1
+                onum = None
+                for tnum in nodes:
+                  if nodes[tnum][4][-1] == subparse:
+                    onum = tnum
+                if onum is None:
+                  print "Did not find", subparse
+                else:
+                  if (onum, label, label_count) in trace_map:
+                    tid = trace_map[(onum, label, label_count)]
+                  else:
+                    trace_map[(onum, label, label_count)] = tid
+                  equal_map[(num, trace_sym, label_count)] = tid
+  for num, label, label_count in trace_map:
+    count = -1
+    for subparse in nodes[num][4]:
+      if subparse.label == label:
+        count += 1
+        if count == label_count:
+          subparse.label += '-' + str(trace_map[(num, label, count)])
+  for num, label, label_count in equal_map:
+    count = -1
+    for subparse in nodes[num][4]:
+      if subparse.label == label:
+        count += 1
+        if count == label_count:
+          subparse.label += '=' + str(equal_map[(num, label, count)])
+
+  root.calculate_spans()
+  return root
 
 def clone_and_find(nodes):
   '''Clone the tree these nodes are in and finds the equivalent nodes in the

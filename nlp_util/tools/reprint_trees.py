@@ -5,6 +5,7 @@
 import sys
 from nlp_util import pstree, treebanks, render_tree
 
+#TODO print run information
 #TODO Add the ability to print multiple outputs in a single run, to dfferent files
 
 tex_start = '''\\documentclass[11pt]{article}
