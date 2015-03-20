@@ -61,6 +61,7 @@ if __name__ == '__main__':
   if len(sys.argv) == 1:
     print "Read trees from stdin and print them to stdout."
     print "Options:"
+    print "  -(i)nput = (p)enn treebank | (c)onll | (s)plit head"
     print "  -(o)utput = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | (h)ead automata"
     print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries"
     print "  -(g)old = <gold filenmae> (can be used by the tex output)"
@@ -68,15 +69,22 @@ if __name__ == '__main__':
     sys.exit(0)
 
   args = get_args()
+  in_format = args["i"] if 'i' in args else 'p'
   out_format = args["o"] if 'o' in args else 's'
   edits = args["e"] if 'e' in args else ''
   gold_file = args["g"] if 'g' in args else None
+  read_func = treebanks.ptb_read_tree
+  if 'c' in in_format:
+    read_func = treebanks.conll_read_tree
+  elif 's' in in_format:
+    read_func = treebanks.shp_read_tree
+
   if gold_file is not None:
-    gold_file = treebanks.generate_trees(gold_file, allow_empty_labels=True)
+    gold_file = treebanks.generate_trees(gold_file, read_func, allow_empty_labels=True)
 
   if out_format == 't':
     print tex_start
-  for tree in treebanks.generate_trees(sys.stdin, return_empty=True, allow_empty_labels=True):
+  for tree in treebanks.generate_trees(sys.stdin, read_func, return_empty=True, allow_empty_labels=True):
     gold_tree = None
     if gold_file is not None:
       gold_tree = gold_file.next()
