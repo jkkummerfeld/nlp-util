@@ -396,108 +396,101 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
   for num in nodes:
     info = nodes[num]
     for edge in info[3]:
-      pnum, label, trace, trace_sym = edge.split()
-      label, label_count = label.split('_')
-      label_count = int(label_count)
-      top = info[4][-1]
-      pnum = int(pnum)
-      if label == 'ROOT':
-        root = top
+      edge_info = edge.split()
+      tnum = int(edge_info[0])
+      slabel = edge_info[2].split('_')[0]
+      slabel_count = int(edge_info[2].split('_')[1])
+      trace = edge_info[3]
+      src = info[4][-1]
+      if slabel == 'ROOT':
+        root = src
         continue
-      if 'trace' not in trace:
+      tlabel = edge_info[1].split('_')[0]
+      tlabel_count = int(edge_info[1].split('_')[1])
+      if trace == '_':
         count = -1
-        for subparse in nodes[pnum][4]:
-          if subparse.label == label:
+        for target in nodes[tnum][4]:
+          if target.label == tlabel:
             count += 1
-            if count == label_count:
-              top.parent = subparse
+            if count == tlabel_count:
+              src.parent = target
               assigned = False
-              for pos in range(len(subparse.subtrees)):
-                sibling = subparse.subtrees[pos]
-                if sibling.span[0] >= top.span[1] and sibling.span[0] != sibling.span[1]:
-                  subparse.subtrees.insert(pos, top)
+              for pos in range(len(target.subtrees)):
+                sibling = target.subtrees[pos]
+                if sibling.span[0] >= src.span[1] and sibling.span[0] != sibling.span[1]:
+                  target.subtrees.insert(pos, src)
                   assigned = True
                   break
               if not assigned:
-                subparse.subtrees.append(top)
+                target.subtrees.append(src)
               break
   root.calculate_spans()
 
   # Add traces
   trace_map = {}
   equal_map = {}
-  for num in nodes:
-    info = nodes[num]
+  for snum in nodes:
+    info = nodes[snum]
     for edge in info[3]:
-      pnum, label, trace, trace_sym = edge.split()
-      label, label_count = label.split('_')
-      label_count = int(label_count)
-      pnum = int(pnum)
-      if 'trace' in trace:
-        top = None
-        trace_type = trace.split('_')[0][5:].split('n')[0]
-        target_count = 0
-        if trace[-1] in string.digits:
-          target_count = int(trace.split('_')[-1])
-          target_label = trace.split('_')[-2]
-          count = -1
-          for subparse in info[4]:
-            if subparse.label == target_label:
-              count += 1
-              if count == target_count:
-                top = subparse
-                break
-        if top is None:
-          top = info[4][-1]
+      edge_info = edge.split()
+      tnum = int(edge_info[0])
+      slabel = edge_info[2].split('_')[0]
+      slabel_count = int(edge_info[2].split('_')[1])
+      trace = edge_info[3]
+      if trace != "_":
+        tlabel = edge_info[1].split('_')[0]
+        tlabel_count = int(edge_info[1].split('_')[1])
+        src = None
+        count = -1
+        for option in info[4]:
+          if option.label == slabel:
+            count += 1
+            if count == slabel_count:
+              src = option
+              break
 
         count = -1
-        for subparse in nodes[pnum][4]:
-          if subparse.label == label:
+        for target in nodes[tnum][4]:
+          if target.label == tlabel:
             count += 1
-            if count == label_count:
+            if count == tlabel_count:
               if '=' not in trace:
-                plabel = top.label
+                trace_symbol = trace.split('_')[0]
+                trace_word = trace.split('_')[1]
                 tid = len(trace_map) + 1
-                if (num, plabel, target_count) in trace_map:
-                  tid = trace_map[(num, plabel, target_count)]
+                if (snum, slabel, slabel_count) in trace_map:
+                  tid = trace_map[(snum, slabel, slabel_count)]
                 else:
-                  trace_map[(num, plabel, target_count)] = tid
-                node = PSTree(trace_type + "-" + str(tid), TRACE_LABEL)
-                parent = PSTree(None, trace_sym, subtrees=[node])
+                  trace_map[(snum, slabel, slabel_count)] = tid
+                node = PSTree(trace_word + "-" + str(tid), TRACE_LABEL)
+                parent = PSTree(None, trace_symbol, subtrees=[node])
                 node.parent = parent
                 # Insert node
                 if parent.label.startswith("NP-SBJ"):
-                  subparse.subtrees.insert(0, parent)
-                elif parent.label.startswith("NP") or '?' in trace_type:
+                  target.subtrees.insert(0, parent)
+                elif parent.label.startswith("NP") or '?' in trace_word:
                   # Find verb and insert afterwards
                   inserted = False
-                  for i in range(len(subparse.subtrees)):
-                    sibling = subparse.subtrees[i]
+                  for i in range(len(target.subtrees)):
+                    sibling = target.subtrees[i]
                     if sibling.label.startswith("V") and sibling.is_terminal():
-                      subparse.subtrees.insert(i+1, parent)
+                      target.subtrees.insert(i+1, parent)
                       inserted = True
                       break
                   if not inserted:
-                    subparse.subtrees.append(parent)
+                    target.subtrees.append(parent)
                 else:
-                  subparse.subtrees.append(parent)
-                parent.parent = subparse
+                  target.subtrees.append(parent)
+                parent.parent = target
               else:
                 # Find the part that corresponds to this
                 tid = len(trace_map) + 1
-                onum = None
-                for tnum in nodes:
-                  for node in nodes[tnum][4]:
-                    if node == subparse:
-                      onum = tnum
-                if onum is None:
-                  print "Did not find", subparse
+                if (tnum, tlabel, tlabel_count) in trace_map:
+                  tid = trace_map[(tnum, tlabel, tlabel_count)]
                 else:
-                  if (onum, label, target_count) in trace_map:
-                    tid = trace_map[(onum, label, target_count)]
-                  else:
-                    trace_map[(onum, label, target_count)] = tid
-                  equal_map[(num, trace_sym, target_count)] = tid
+                  trace_map[(tnum, tlabel, tlabel_count)] = tid
+                equal_map[(snum, slabel, slabel_count)] = tid
+
   # Add co-indexation
   for num, label, label_count in trace_map:
     count = -1

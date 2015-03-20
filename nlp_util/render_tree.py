@@ -33,19 +33,28 @@ def text_POS_tagged(tree, show_traces=False):
       text.append(tree.word + '|' + tree.label)
   return ' '.join(text)
 
-def text_tree(tree, single_line=True, show_traces=False, depth=0):
+def text_tree(tree, single_line=True, show_traces=False, depth=0, dense=True, newline=True):
   if not show_traces:
     tree = treebanks.remove_traces(tree, False)
   ans = ''
   if not single_line and depth > 0:
-    ans = '\n' + depth * '\t'
+    if newline or (not dense) or tree.word is None:
+      ans = '\n' + depth * '\t'
+    else:
+      ans = ' '
   ans += '(' + tree.label
   if tree.word is not None:
     ans += ' ' + tree.word
+    newline = True
+  else:
+    newline = False
   for subtree in tree.subtrees:
     if single_line:
       ans += ' '
-    ans += text_tree(subtree, single_line, True, depth + 1)
+    ans += text_tree(subtree, single_line, True, depth + 1, dense, newline)
+    newline = subtree.word is None
+  if tree.word is None and dense and tree.subtrees[-1].word is not None:
+    ans += ' '
   ans += ')'
   return ans
 
@@ -297,218 +306,6 @@ def text_coloured_errors(tree, gold=None, unused=0, single_line=False, unused2=N
       ans.append(begin + text)
   return ''.join(ans)
 
-def text_coloured_errors_old(tree, gold=None, depth=0, single_line=False, missing=None, extra=None, compressed=True, POS=True):
-  '''Pretty print, with errors marked using colour.
-  
-  'missing' should contain tuples (or be None):
-    (start, end, label, crossing-T/F)
-  '''
-  # TODO: Add the ability to compress the same parts consistently (even after
-  # errors are no longer present). This would need to be span based as
-  # structure could change.
-  ans = ''
-  if missing is None or extra is None:
-    if gold is None:
-      return "Error - no gold tree and no missing list for colour repr"
-    # look at gold and work out what missing should be
-    errors = parse_errors.get_errors(tree, gold, POS)
-    extra = [e[3] for e in errors if e[0] == 'extra' and e[3].word is None]
-    extra = set(extra)
-    missing = [(e[1][0], e[1][1], e[2], False) for e in errors if e[0] == 'missing' and e[3].word is None]
-    missing += [(e[1][0], e[1][1], e[2], True) for e in errors if e[0] == 'crossing' and e[3].word is None]
-    POS = [e for e in errors if e[0] == 'diff POS']
-  start_missing = "\033[01;36m"
-  start_extra = "\033[01;31m"
-  start_crossing = "\033[01;33m"
-  end_colour = "\033[00m"
-  
-  if not single_line:
-    ans += '\n' + depth * '\t'
-
-  # start of this
-  if tree in extra:
-    ans += start_extra + '(' + tree.label + end_colour
-  elif tree.word is not None and POS is not None:
-    found = False
-    for error in POS:
-      if error[3] == tree:
-        found = True
-        ans += '(' + start_missing + error[4] + end_colour
-        ans += ' ' + start_extra + tree.label + end_colour
-        break
-    if not found:
-      ans += '(' + tree.label
-  else:
-    ans += '(' + tree.label
-  
-  # If we are compressing, check for correctness and then just print words
-  sub_done = False
-  if compressed and tree not in extra and tree.word is None:
-    all_right = True
-    for error in extra:
-      if tree.span[0] <= error.span[0] and error.span[1] <= tree.span[1]:
-        all_right = False
-        break
-    for error in missing:
-      if error[3]:
-        if tree.span[0] < error[0] < tree.span[1]:
-          all_right = False
-          break
-        if tree.span[0] < error[1] < tree.span[1]:
-          all_right = False
-          break
-      elif tree.span[0] <= error[0] and error[1] <= tree.span[1]:
-        all_right = False
-        break
-    if POS is not None:
-      for error in POS:
-        if tree.span[0] <= error[1][0] and error[1][1] <= tree.span[1]:
-          all_right = False
-          break
-    if all_right:
-      ans += ' ' + text_words(tree) + ')'
-      sub_done = True
-
-  # crossing brackets starting
-  if tree.parent is None or tree.parent.subtrees[0] != tree:
-    # these are marked as high as possible
-    labels = []
-    for error in missing:
-      if error[0] == tree.span[0] and error[3]:
-        labels.append((error[1], error[2]))
-    labels.sort(reverse=True)
-    if len(labels) > 0:
-      to_add = start_crossing + ' '.join(['(' + label[1] for label in labels]) + end_colour
-      if sub_done:
-        nans = ''
-        for char in ans:
-          if char in '\t\n':
-            nans += char
-        clen = len(nans)
-        nans += to_add
-        nans += ' ' + ans[clen:]
-        ans = nans
-      else:
-        ans += ' ' + to_add
-
-  if not sub_done:
-    # word
-    if tree.word is not None:
-      ans += ' ' + tree.word
-
-    # subtrees
-    below = []
-    for subtree in tree.subtrees:
-      text = text_coloured_errors(subtree, gold, depth + 1, single_line, missing, extra, compressed, POS)
-      if single_line:
-        text = ' ' + text
-      below.append([subtree.span[0], subtree.span[1], text])
-    # add missing brackets that surround subtrees
-    for length in xrange(1, len(below)):
-      for i in xrange(len(below)):
-        j = i + length
-        if i == 0 and j == len(below) - 1:
-          continue
-        if j >= len(below):
-          break
-        for error in missing:
-          if below[i][0] == error[0] and below[j][1] == error[1] and not error[3]:
-            start = ''
-            for char in below[i][2]:
-              if char not in '\n\t':
-                break
-              start += char
-            for k in xrange(i, j+1):
-              below[k][2] = '\n\t'.join(below[k][2].split('\n'))
-            below[i][2] = start + start_missing + '(' + error[2] + end_colour + below[i][2]
-            below[j][2] += start_missing + ')' + end_colour
-    ans += ''.join([part[2] for part in below])
-
-    # end of this
-    if tree in extra:
-      ans += start_extra + ')' + end_colour
-    else:
-      ans += ')'
-
-  if tree.parent is None or tree.parent.subtrees[-1] != tree:
-    # if there are crossing brackets that end here, mark that
-    labels = []
-    for error in missing:
-      if error[1] == tree.span[1] and error[3]:
-        labels.append((-error[0], error[2]))
-    labels.sort()
-    if len(labels) > 0:
-      ans += ' ' + start_crossing + ' '.join([label[1] + ')' for label in labels]) + end_colour
-
-  # TODO: Change so that at the top level, FRAG etc isn't printed outside of ROOT
-  # Actually, just have a canonical ordering for unaries (so that NPs end up under FRAGs)
-  if tree.parent is None or len(tree.parent.subtrees) > 1:
-    # check for missing brackets that go around this node
-    for error in missing:
-      if error[0] == tree.span[0] and error[1] == tree.span[1] and not error[3]:
-        if not tree in extra:
-          # Put them on a new level
-          extra_text = ''
-          if not single_line:
-            ans = '\n\t'.join(ans.split('\n'))
-            extra_text = '\n' + depth * '\t'
-          extra_text += start_missing + '(' + error[2] + end_colour
-          if single_line:
-            ans = ' ' + ans
-          ans = extra_text + ans
-          ans += start_missing + ')' + end_colour
-        else:
-          # Put them on the same line
-          start = 0
-          for char in ans:
-            if char not in '\n\t':
-              break
-            start += 1
-          pretext = ans[:start]
-          ans = ans[start:]
-          extra_text = start_missing + '(' + error[2] + end_colour + ' '
-          ans = pretext + extra_text + ans
-          ans += start_missing + ')' + end_colour
-  return ans
-
-def check_tree(edges):
-  points = set()
-  for edge in edges:
-    points.add(edge[0])
-    points.add(edge[1])
-  return len(points) == (len(edges) + 1)
-
-def check_proj(edges):
-  for edge1 in edges:
-    for edge2 in edges:
-      if edge1[0] < edge2[0] < edge1[1] < edge2[1]:
-        return False
-      if edge2[0] < edge1[0] < edge2[1] < edge1[1]:
-        return False
-  return True
-
-def check_1ec(edges):
-  edge_sets = {}
-  for edge1 in edges:
-    for edge2 in edges:
-      if edge1[0] < edge2[0] < edge1[1] < edge2[1]:
-        if edge1 not in edge_sets:
-          edge_sets[edge1] = (set(), set())
-        edge_sets[edge1][0].add(edge2[0])
-        edge_sets[edge1][1].add(edge2[1])
-      if edge2[0] < edge1[0] < edge2[1] < edge1[1]:
-        if edge1 not in edge_sets:
-          edge_sets[edge1] = (set(), set())
-        edge_sets[edge1][0].add(edge2[1])
-        edge_sets[edge1][1].add(edge2[0])
-  ans = True
-  for edge in edge_sets:
-    edge_set = edge_sets[edge]
-    if len(edge_set[0]) > 1 and len(edge_set[1]) > 1:
-      ans = False
-      print "# 1EC_violation", edge, edge_set
-  return ans
-
 def label_level(parse, head_map, label=None):
   head = head_finder.get_head(head_map, parse, True)
   if label is None:
@@ -557,35 +354,13 @@ def get_edges(parse, edges, spines, head_map, traces):
     # Normal edges
     for subparse in parse.subtrees:
       shead = head_finder.get_head(head_map, subparse, True)
-      # Check if this subtree is the actual structure used in a trace
-      trace_info = "_"
-      cur = subparse
-      changed = True
-      while changed:
-        signature = (cur.span, cur.label)
-        if signature in traces[0]:
-          trace_info = "_" 
-          num = traces[0][signature][0]
-          if num in traces[1]:
-            trace_type = set()
-            for subparse in traces[1][num]:
-              trace_type.add(subparse.word.split('-')[0])
-            trace_info = "{}".format('_'.join(list(trace_type)))
-        for num in traces[2]:
-          for tparse in traces[2][num]:
-            if signature == (tparse.span, tparse.label):
-              trace_info = "=" 
-        changed = False
-        for subsubparse in cur.subtrees:
-          if shead == head_finder.get_head(head_map, subsubparse, True):
-            cur = subsubparse
-            changed = True
-            break
       if shead is not None and chead is not None:
         if shead[0] != chead[0]:
           plabel = treebanks.remove_coindexation_from_label(parse.label)
-          level = label_level(parse, head_map)
-          edges.append((shead[0][1], plabel + '_' + str(level), chead[0][1], trace_info))
+          clabel = treebanks.remove_coindexation_from_label(subparse.label)
+          plevel = label_level(parse, head_map)
+          clevel = label_level(subparse, head_map)
+          edges.append((shead[0][1], plabel + '_' + str(plevel), chead[0][1], clabel + "_" + str(clevel), "_"))
 
     # Traces
     signature = (parse.span, parse.label)
@@ -598,13 +373,14 @@ def get_edges(parse, edges, spines, head_map, traces):
       clevel = label_level(cparse.parent, head_map)
       if num in traces[1]:
         for subparse in traces[1][num]:
-          trace_type = "trace" + '-'.join(subparse.word.split('-')[:-1]) + 'n_' + clabel + '_' + str(clevel)
+          trace_type = clabel + '_' + str(clevel)
           parent = subparse
           while head_finder.get_head(head_map, parent, True) is None and parent.parent is not None:
             parent = parent.parent
           phead = head_finder.get_head(head_map, parent, True)
           plabel = treebanks.remove_coindexation_from_label(parent.label)
           ilabel = treebanks.remove_coindexation_from_label(subparse.parent.label)
+          ilabel += "_"+ '-'.join(subparse.word.split('-')[:-1])
           level = label_level(parent, head_map)
           edges.append((chead[0][1], plabel + '_' + str(level), phead[0][1], trace_type, ilabel))
 
@@ -637,12 +413,12 @@ def get_edges(parse, edges, spines, head_map, traces):
         for subparse in traces[1][num]:
           slabel = treebanks.remove_coindexation_from_label(tparse.label)
           slevel = label_level(tparse, head_map)
-          trace_type = '-'.join(subparse.word.split('-')[:-1])
-          trace_type = "trace{}_{}_{}".format(trace_type, slabel, slevel)
+          trace_type = "{}_{}".format(slabel, slevel)
           parent = subparse.parent # Attachment point
           plabel = treebanks.remove_coindexation_from_label(parent.parent.label)
           plevel = label_level(parent.parent, head_map)
           null_wrap = treebanks.remove_coindexation_from_label(parent.label)
+          null_wrap += "_"+ '-'.join(subparse.word.split('-')[:-1])
           while head_finder.get_head(head_map, parent, True) is None and parent.parent is not None:
             parent = parent.parent
           phead = head_finder.get_head(head_map, parent, True)
@@ -653,8 +429,7 @@ def get_edges(parse, edges, spines, head_map, traces):
             tparse = tparse.parent
             slevel = label_level(tparse, head_map, slabel)
             thead = head_finder.get_head(head_map, tparse, True)
-            trace_type = '-'.join(subparse.word.split('-')[:-1])
-            trace_type = "trace{}_{}_{}".format(trace_type, slabel, slevel)
+            trace_type = "{}_{}".format(slabel, slevel)
             if thead is not None:
               edges.append((thead[0][1], plabel + '_' + str(plevel), phead[0][1], trace_type, null_wrap))
 
@@ -665,20 +440,59 @@ def get_edges(parse, edges, spines, head_map, traces):
           shead = head_finder.get_head(head_map, subparse, True)
           plabel = treebanks.remove_coindexation_from_label(parse.label)
           clabel = treebanks.remove_coindexation_from_label(subparse.label)
-          level = label_level(parse, head_map)
+          plevel = label_level(parse, head_map)
+          clevel = label_level(subparse, head_map)
           if phead is None:
             phead = head_finder.get_head(head_map, parse.parent, True)
             plabel = treebanks.remove_coindexation_from_label(parse.parent.label)
-            level = label_level(parse.parent, head_map)
+            plevel = label_level(parse.parent, head_map)
           if shead is None:
             print "# Failed on = with (P=# (NONE))"
           else:
-            edges.append((shead[0][1], plabel + '_' + str(level), phead[0][1], 'trace=', clabel))
+            edges.append((shead[0][1], plabel + '_' + str(plevel), phead[0][1], clabel + "_" + str(clevel), "="))
 
     for subparse in parse.subtrees:
       get_edges(subparse, edges, spines, head_map, traces)
 
-def hag_format(parse, depth=0, head_map=None, traces=None, edges=None):
+def check_tree(edges):
+  points = set()
+  for edge in edges:
+    points.add(edge[0])
+    points.add(edge[1])
+  return len(points) == (len(edges) + 1)
+
+def check_proj(edges):
+  for edge1 in edges:
+    for edge2 in edges:
+      if edge1[0] < edge2[0] < edge1[1] < edge2[1]:
+        return False
+      if edge2[0] < edge1[0] < edge2[1] < edge1[1]:
+        return False
+  return True
+
+def check_1ec(edges):
+  edge_sets = {}
+  for edge1 in edges:
+    for edge2 in edges:
+      if edge1[0] < edge2[0] < edge1[1] < edge2[1]:
+        if edge1 not in edge_sets:
+          edge_sets[edge1] = (set(), set())
+        edge_sets[edge1][0].add(edge2[0])
+        edge_sets[edge1][1].add(edge2[1])
+      if edge2[0] < edge1[0] < edge2[1] < edge1[1]:
+        if edge1 not in edge_sets:
+          edge_sets[edge1] = (set(), set())
+        edge_sets[edge1][0].add(edge2[1])
+        edge_sets[edge1][1].add(edge2[0])
+  ans = True
+  for edge in edge_sets:
+    edge_set = edge_sets[edge]
+    if len(edge_set[0]) > 1 and len(edge_set[1]) > 1:
+      ans = False
+      print "# 1EC_violation", edge, edge_set
+  return ans
+
+def shg_format(parse, depth=0, head_map=None, traces=None, edges=None):
   parse.calculate_spans()
   traces = treebanks.resolve_traces(parse)
   base_parse = treebanks.remove_traces(parse, False)
@@ -690,20 +504,7 @@ def hag_format(parse, depth=0, head_map=None, traces=None, edges=None):
 
   # Prefix
   ans = []
-  last_open = True
-  for line in text_tree(parse, False, True).split("\n"):
-    if last_open and len(line.strip()) > 2 and line.strip()[0] == '(' and line.strip()[-1] == ')':
-      ans[-1] += " {}".format(line.strip())
-      if line.strip()[-2] != ')':
-        last_open = True
-      else:
-        last_open = False
-    else:
-      ans.append("# Parse  {}".format(line))
-      if line.strip()[-2] != ')':
-        last_open = True
-      else:
-        last_open = False
+  ans = ["# Parse  " + line for line in text_tree(parse, False, True).split("\n")]
   words = text_words(parse).split()
   ans.append("# Sent")
   for i, w in enumerate(words):
@@ -723,7 +524,8 @@ def hag_format(parse, depth=0, head_map=None, traces=None, edges=None):
   spines = []
   label = treebanks.remove_coindexation_from_label(parse.label)
   head = head_finder.get_head(head_map, parse, True)
-  edges.append((head[0][1], label + '_0', 0, '_'))
+  level = label_level(parse, head_map)
+  edges.append((head[0][1], '_', 0, label + "_" + str(level), "_"))
 
   get_edges(parse, edges, spines, head_map, traces)
 
@@ -758,9 +560,9 @@ def hag_format(parse, depth=0, head_map=None, traces=None, edges=None):
         parent = edge[2]
         label = edge[1]
         etype = edge[3]
-        trace_info = edge[4] if len(edge) == 5 else "_"
+        trace_info = edge[4]
         part = " | {} {} {} {}".format(parent, label, etype, trace_info)
-        if etype == '_':
+        if trace_info == '_':
           to_add.insert(0, part)
         else:
           to_add.append(part)

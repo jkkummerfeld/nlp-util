@@ -62,7 +62,7 @@ if __name__ == '__main__':
     print "Read trees from stdin and print them to stdout."
     print "Options:"
     print "  -(i)nput = (p)enn treebank | (c)onll | (s)plit head"
-    print "  -(o)utput = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | (h)ead automata"
+    print "  -(o)utput = (s)ingle_line [with (t)races] | (m)ulti_line [with (t)races] | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | (h)ead automata"
     print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries"
     print "  -(g)old = <gold filenmae> (can be used by the tex output)"
     print "\ne.g. %s -o s -e tf < trees_in > trees_out" % sys.argv[0]
@@ -121,12 +121,16 @@ if __name__ == '__main__':
       print render_tree.text_tree(tree, single_line=True)
     elif out_format == 'm':
       print render_tree.text_tree(tree, single_line=False)
+    elif out_format == 'st':
+      print render_tree.text_tree(tree, single_line=True, show_traces=True)
+    elif out_format == 'mt':
+      print render_tree.text_tree(tree, single_line=False, show_traces=True)
     elif out_format == 'o':
       print render_tree.text_ontonotes(tree)
     elif out_format == 'p':
       print render_tree.text_POS_tagged(tree)
     elif out_format == 'h':
-      print render_tree.hag_format(tree)
+      print render_tree.shg_format(tree)
     elif out_format == 't':
       if gold_tree is None:
         print '\\scalebox{\\derivscale}{'

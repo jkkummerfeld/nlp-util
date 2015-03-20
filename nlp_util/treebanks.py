@@ -435,7 +435,7 @@ def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
   ptb_cleaning(tree)
   return tree
 
-def ontonotes_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False, blank_line_coverage=False):
+def conll_read_tree(source, return_empty=False, allow_empty_labels=False, allow_empty_words=False, blank_line_coverage=False):
   '''Read a single tree from the given OntoNotes data file.
   
   >>> from StringIO import StringIO
@@ -458,7 +458,7 @@ def ontonotes_read_tree(source, return_empty=False, allow_empty_labels=False, al
   ... 
   ... """
   >>> in_file = StringIO(file_text)
-  >>> tree = ontonotes_read_tree(in_file)
+  >>> tree = conll_read_tree(in_file)
   >>> print tree
   (TOP (S (NP (PRP They)) (VP (MD will) (VP (VB remain) (PP (IN on) (NP (NP (DT a) (NML (JJR lower) (HYPH -) (NN priority)) (NN list)) (SBAR (WHNP (WDT that)) (S (VP (VBZ includes) (NP (CD 17) (JJ other) (NNS countries))))))))) (. .)))'''
   cur_text = []
