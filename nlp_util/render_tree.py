@@ -455,11 +455,15 @@ def get_edges(parse, edges, spines, head_map, traces):
       get_edges(subparse, edges, spines, head_map, traces)
 
 def check_tree(edges):
-  points = set()
+  children = set()
+  words = set()
   for edge in edges:
-    points.add(edge[0])
-    points.add(edge[1])
-  return len(points) == (len(edges) + 1)
+    if edge[0] in children:
+      return False
+    children.add(edge[0])
+    words.add(edge[0])
+    words.add(edge[1])
+  return len(words) == len(edges)
 
 def check_proj(edges):
   for edge1 in edges:
