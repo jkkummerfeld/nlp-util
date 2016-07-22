@@ -30,7 +30,7 @@ def text_POS_tagged(tree, show_traces=False):
     if node.is_terminal():
       if node.is_trace() and not show_traces:
         continue
-      text.append(tree.word + '|' + tree.label)
+      text.append(node.word + '|' + node.label)
   return ' '.join(text)
 
 def text_tree(tree, single_line=True, show_traces=False, depth=0, dense=True, newline=True):
@@ -331,7 +331,8 @@ def get_edges(parse, edges, spines, head_map, traces):
     chain = []
     cur = parse.parent
     while cur is not None and chead == head_finder.get_head(head_map, cur, True):
-      chain.append(treebanks.remove_coindexation_from_label(cur.label))
+      if cur.parent is not None:
+        chain.append(treebanks.remove_coindexation_from_label(cur.label))
       signature = (cur.span, cur.label)
       target, null_cur = None, None
       if signature in traces[3]:
@@ -419,6 +420,8 @@ def get_edges(parse, edges, spines, head_map, traces):
           plevel = label_level(parent.parent, head_map)
           null_wrap = treebanks.remove_coindexation_from_label(parent.label)
           null_wrap += "_"+ '-'.join(subparse.word.split('-')[:-1])
+          if in_chain:
+            null_wrap += "_chain"
           while head_finder.get_head(head_map, parent, True) is None and parent.parent is not None:
             parent = parent.parent
           phead = head_finder.get_head(head_map, parent, True)
@@ -456,14 +459,12 @@ def get_edges(parse, edges, spines, head_map, traces):
 
 def check_tree(edges):
   children = set()
-  words = set()
   for edge in edges:
-    if edge[0] in children:
+    child = int(edge[0])
+    if child in children:
       return False
-    children.add(edge[0])
-    words.add(edge[0])
-    words.add(edge[1])
-  return len(words) == len(edges)
+    children.add(child)
+  return True
 
 def check_proj(edges):
   for edge1 in edges:
@@ -496,11 +497,50 @@ def check_1ec(edges):
       print "# 1EC_violation", edge, edge_set
   return ans
 
-def shg_format(parse, depth=0, head_map=None, traces=None, edges=None):
+def check_cyclic(edges, len1=False):
+  edge_sets = {}
+  for edge in edges:
+    if edge[0] not in edge_sets:
+      edge_sets[edge[0]] = set()
+    if edge[2] not in edge_sets:
+      edge_sets[edge[2]] = set()
+    edge_sets[edge[0]].add(edge[2])
+
+  cycle = False
+  for start in edge_sets:
+    queue = [start]
+    done = set()
+    while len(queue) > 0:
+      cur = queue.pop(0)
+      for other in edge_sets[cur]:
+        if other == start:
+          if len1 or cur != start:
+            cycle = True
+        if other not in done:
+          queue.append(other)
+          done.add(other)
+  return cycle
+
+def check_self_cycle(edges):
+  for edge in edges:
+    if edge[0] == edge[2]:
+      return True
+  return False
+
+def check_double_edge(edges):
+  edge_set = set()
+  for edge in edges:
+    edge = (edge[0], edge[2])
+    if edge in edge_set:
+      return True
+    edge_set.add(edge)
+  return False
+
+def shg_format(parse, head_rules):
   parse.calculate_spans()
   traces = treebanks.resolve_traces(parse)
   base_parse = treebanks.remove_traces(parse, False)
-  head_map = head_finder.pennconverter_find_heads(base_parse)
+  head_map = head_finder.find_heads(base_parse, head_rules)
   edges = []
 ###  for node in pstree.TreeIterator(parse):
 ###    head = head_finder.get_head(head_map, node, True)
@@ -526,10 +566,11 @@ def shg_format(parse, depth=0, head_map=None, traces=None, edges=None):
 
   edges = []
   spines = []
-  label = treebanks.remove_coindexation_from_label(parse.label)
+  label = treebanks.remove_coindexation_from_label(parse.subtrees[0].label)
+  assert len(parse.subtrees) == 1
   head = head_finder.get_head(head_map, parse, True)
-  level = label_level(parse, head_map)
-  edges.append((head[0][1], '_', 0, label + "_" + str(level), "_"))
+  level = label_level(parse.subtrees[0], head_map)
+  edges.append((head[0][1], "ROOT_0", 0, label + "_" + str(level), "_"))
 
   get_edges(parse, edges, spines, head_map, traces)
 
@@ -549,7 +590,10 @@ def shg_format(parse, depth=0, head_map=None, traces=None, edges=None):
     graph_type += "  1ec"
   else:
     graph_type += "other"
-  graph_type += ' tree' if check_tree(nedges) else ' graph'
+  graph_type += ' tree' if check_tree(edges) else ' graph'
+  graph_type += ' cyclic' if check_cyclic(edges) else ' no-cycle'
+  graph_type += ' self-cycle' if check_self_cycle(edges) else ' no-self-cycle'
+  graph_type += ' double-edge' if check_double_edge(edges) else ' no-double'
   ans.append(graph_type)
 
   # Spines and edges

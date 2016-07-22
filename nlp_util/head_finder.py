@@ -8,6 +8,123 @@ import treebanks
 
 log = False
 
+jkk_mapping_table = {
+  "ADJP": ("left", "NNS QP NN $ ADVP JJ VBN VBG ADJP JJR NP JJS DT FW RBR RBS SBAR RB".split()),
+  "ADVP": ("right", "RB RBR RBS FW ADVP TO CD JJR JJ IN NP JJS NN".split()),
+  "CONJP": ("right", "CC RB IN".split()),
+  "FRAG": ("right", []),
+  "INTJ": ("left", []),
+  "LST": ("right", "LS :".split()),
+  "NAC": ("left", "NN NNS NNP NNPS NP NAC EX $ CD QP PRP VBG JJ JJS JJR ADJP FW".split()),
+  "NP": ("left", "POS NN NNP NNPS NNS NX JJR CD JJ JJS RB QP NP".split()),
+  "NX": ("right", "POS NN NNP NNPS NNS NX JJR CD JJ JJS RB QP NP".split()),
+  "PP": ("right", "IN TO VBG VBN RP FW".split()),
+###  "PRN": ("left", []), # pre March 2
+  "PRN": ("left", "S VP".split()), # March 2b
+  "PRT": ("right", "RP"),
+  "QP": ("left", "$ IN NNS NN JJ RB DT CD NCD QP JJR JJS".split()),
+  "RRC": ("right", "VP NP ADVP ADJP PP".split()),
+  "S": ("left", "TO IN PRN VP S SBAR ADJP UCP NP ADVP SINV".split()),
+  "SBAR": ("left", "S WHNP WHPP WHADVP WHADJP IN DT SQ SINV SBAR FRAG".split()),
+  "SBARQ": ("left", "SQ S SINV SBARQ FRAG".split()),
+  "SINV": ("left", "VBZ VBD VBP VB MD VP S SINV ADJP NP".split()),
+###  "SQ": ("left", "VBZ VBD VBP VB MD VP SQ".split()), # pre March 2
+  "SQ": ("left", "VP VBZ VBD VBP VB MD SQ".split()), # March 2b
+  "UCP": ("right", []),
+###  "VP": ("left", "VP MD VB VBG VBP VBD VBN VBZ TO ADJP NN NNS NP IN".split()), # pre March 2
+###  "VP": ("left", "VP VBZ S MD VB VBG VBP VBD VBN TO ADJP NN NNS NP IN".split()), # March 2b
+  "VP": ("left", "VP VBZ VB VBG VBP VBD VBN MD S aux TO ADJP NN NNS NP IN".split()), # March 23
+  "WHADJP": ("left", "CC WRB JJ ADJP".split()),
+  "WHADVP": ("right", "CC WRB".split()),
+###  "WHNP": ("left", "WDT WP WP$ WHADJP WHPP WHNP".split()), # pre March 2
+  "WHNP": ("left", "WDT WP WP$ WHADJP WHPP S WHNP".split()), # March 2b
+  "WHPP": ("right", "IN TO FW".split()),
+  "X": ("right", []),
+  'META': ('right', []),
+  "CCADJP": ("left", ['CC', 'CONJP']),
+  "CCADVP": ("left", ['CC', 'CONJP']),
+  "CCFRAG": ("left", ['CC', 'CONJP']),
+  "CCINTJ": ("left", ['CC', 'CONJP']),
+  "CCNAC": ("left", ['CC', 'CONJP']),
+  "CCNP": ("left", ['CC', 'CONJP']),
+  "CCNX": ("left", ['CC', 'CONJP']),
+  "CCPP": ("left", ['CC', 'CONJP']),
+  "CCPRN": ("left", ['CC', 'CONJP']),
+  "CCPRT": ("left", ['CC', 'CONJP']),
+  "CCQP": ("left", ['CC', 'CONJP']),
+  "CCRRC": ("left", ['CC', 'CONJP']),
+  "CCSBAR": ("left", ['CC', 'CONJP']),
+  "CCSBARQ": ("left", ['CC', 'CONJP']),
+  "CCS": ("left", ['CC', 'CONJP']),
+  "CCSINV": ("left", ['CC', 'CONJP']),
+  "CCSQ": ("left", ['CC', 'CONJP']),
+  "CCUCP": ("left", ['CC', 'CONJP']),
+  "CCVP": ("left", ['CC', 'CONJP']),
+  "CCWHADJP": ("left", ['CC', 'CONJP']),
+  "CCWHADVP": ("left", ['CC', 'CONJP']),
+  "CCWHNP": ("left", ['CC', 'CONJP']),
+  "CCX": ("left", ['CC', 'CONJP']),
+}
+special_cases = {
+  "aux": {"'d", "be", "am", "are", "'s", "is", "was", "were", "being", "been", "can", "could", "do", "does", "did", "have", "has", "had", "having", "may", "might", "must", "need", "ought", "shall", "should", "will", "would"}
+}
+
+
+# Collins 2008 (from script provided by xavier)
+collins_mapping_table = {
+  "ADJP": ("left", "NNS QP NN $ ADVP JJ VBN VBG ADJP JJR NP JJS DT FW RBR RBS SBAR RB".split()),
+  "ADVP": ("right", "RB RBR RBS FW ADVP TO CD JJR JJ IN NP JJS NN".split()),
+  "CONJP": ("right", "CC RB IN".split()),
+  "FRAG": ("right", []),
+  "INTJ": ("left", []),
+  "LST": ("right", "LS :".split()),
+  "NAC": ("left", "NN NNS NNP NNPS NP NAC EX $ CD QP PRP VBG JJ JJS JJR ADJP FW".split()),
+  "NP": ("left", "POS NN NNP NNPS NNS NX JJR CD JJ JJS RB QP NP".split()),
+  "NX": ("right", "POS NN NNP NNPS NNS NX JJR CD JJ JJS RB QP NP".split()),
+  "PP": ("right", "IN TO VBG VBN RP FW".split()),
+  "PRN": ("left", []),
+  "PRT": ("right", "RP"),
+  "QP": ("left", "$ IN NNS NN JJ RB DT CD NCD QP JJR JJS".split()),
+  "RRC": ("right", "VP NP ADVP ADJP PP".split()),
+  "S": ("left", "TO IN VP S SBAR ADJP UCP NP ADVP SINV".split()),
+  "SBAR": ("left", "WHNP WHPP WHADVP WHADJP IN DT S SQ SINV SBAR FRAG".split()),
+  "SBARQ": ("left", "SQ S SINV SBARQ FRAG".split()),
+  "SINV": ("left", "VBZ VBD VBP VB MD VP S SINV ADJP NP".split()),
+  "SQ": ("left", "VBZ VBD VBP VB MD VP SQ".split()),
+  "UCP": ("right", []),
+  "VP": ("left", "TO VBD VBN MD VBZ VB VBG VBP VP ADJP NN NNS NP IN".split()),
+  "WHADJP": ("left", "CC WRB JJ ADJP".split()),
+  "WHADVP": ("right", "CC WRB".split()),
+  "WHNP": ("left", "WDT WP WP$ WHADJP WHPP WHNP".split()),
+  "WHPP": ("right", "IN TO FW".split()),
+  "X": ("right", []),
+  # My additions:
+  'META': ('right', []),
+  "CCADJP": ("left", ['CC', 'CONJP']),
+  "CCADVP": ("left", ['CC', 'CONJP']),
+  "CCFRAG": ("left", ['CC', 'CONJP']),
+  "CCINTJ": ("left", ['CC', 'CONJP']),
+  "CCNAC": ("left", ['CC', 'CONJP']),
+  "CCNP": ("left", ['CC', 'CONJP']),
+  "CCNX": ("left", ['CC', 'CONJP']),
+  "CCPP": ("left", ['CC', 'CONJP']),
+  "CCPRN": ("left", ['CC', 'CONJP']),
+  "CCPRT": ("left", ['CC', 'CONJP']),
+  "CCQP": ("left", ['CC', 'CONJP']),
+  "CCRRC": ("left", ['CC', 'CONJP']),
+  "CCSBAR": ("left", ['CC', 'CONJP']),
+  "CCSBARQ": ("left", ['CC', 'CONJP']),
+  "CCS": ("left", ['CC', 'CONJP']),
+  "CCSINV": ("left", ['CC', 'CONJP']),
+  "CCSQ": ("left", ['CC', 'CONJP']),
+  "CCUCP": ("left", ['CC', 'CONJP']),
+  "CCVP": ("left", ['CC', 'CONJP']),
+  "CCWHADJP": ("left", ['CC', 'CONJP']),
+  "CCWHADVP": ("left", ['CC', 'CONJP']),
+  "CCWHNP": ("left", ['CC', 'CONJP']),
+  "CCX": ("left", ['CC', 'CONJP']),
+}
+
 # Based on Johansson and Nugues
 non_punct_re = re.compile('[A-Z].*')
 pennconverter_mapping_table = {
@@ -38,41 +155,36 @@ pennconverter_mapping_table = {
   # Added by me:
   'META': ('right', [])
 }
-
 # TODO: Handle the various flags defined for pennconverter
-# Falgs from pennconverter
-wh_heads = False
 
-
-# Collins
-collins_mapping_table = {
-  'ADJP': ('right', ['NNS', 'QP', 'NN', '$', 'ADVP', 'JJ', 'VBN', 'VBG', 'ADJP', 'JJR', 'NP', 'JJS', 'DT', 'FW', 'RBR', 'RBS', 'SBAR', 'RB']),
-  'ADVP': ('left', ['RB', 'RBR', 'RBS', 'FW', 'ADVP', 'TO', 'CD', 'JJR', 'JJ', 'IN', 'NP', 'JJS', 'NN']),
-  'CONJP': ('left', ['CC', 'RB', 'IN']),
-  'FRAG': ('left', []),
-  'INTJ': ('right', []),
-  'LST': ('left', ['LS', ':']),
-  'NAC': ('right', ['NN', 'NNS', 'NNP', 'NNPS', 'NP', 'NAC', 'EX', '$', 'CD', 'QP', 'PRP', 'VBG', 'JJ', 'JJS', 'JJR', 'ADJP', 'FW']),
-  'PP': ('left', ['IN', 'TO', 'VBG', 'VBN', 'RP', 'FW']),
-  'PRN': ('right', []),
-  'PRT': ('left', ['RP']),
-  'QP': ('right', ['$', 'IN', 'NNS', 'NN', 'JJ', 'RB', 'DT', 'CD', 'NCD', 'QP', 'JJR', 'JJS']),
-  'RRC': ('left', ['VP', 'NP', 'ADVP', 'ADJP', 'PP']),
-  'S': ('right', ['TO', 'IN', 'VP', 'S', 'SBAR', 'ADJP', 'UCP', 'NP']),
-  'SBAR': ('right', ['WHNP', 'WHPP', 'WHADVP', 'WHADJP', 'IN', 'DT', 'S', 'SQ', 'SINV', 'SBAR', 'FRAG']),
-  'SBARQ': ('right', ['SQ', 'S', 'SINV', 'SBARQ', 'FRAG']),
-  'SINV': ('right', ['VBZ', 'VBD', 'VBP', 'VB', 'MD', 'VP', 'S', 'SINV', 'ADJP', 'NP']),
-  'SQ': ('right', ['VBZ', 'VBD', 'VBP', 'VB', 'MD', 'VP', 'SQ']),
-  'UCP': ('left', []),
-  'VP': ('right', ['TO', 'VBD', 'VBN', 'MD', 'VBZ', 'VB', 'VBG', 'VBP', 'VP', 'ADJP', 'NN', 'NNS', 'NP']),
-  'WHADJP': ('right', ['CC', 'WRB', 'JJ', 'ADJP']),
-  'WHADVP': ('left', ['CC', 'WRB']),
-  'WHNP': ('right', ['WDT', 'WP', 'WP$', 'WHADJP', 'WHPP', 'WHNP']),
-  'WHPP': ('left', ['IN', 'TO', 'FW']),
-  # Added by me:
-  'NX': ('right', ['NN', 'NNS', 'NNP', 'NNPS', 'NP', 'NAC', 'EX', '$', 'CD', 'QP', 'PRP', 'VBG', 'JJ', 'JJS', 'JJR', 'ADJP', 'FW']),
-  'X': ('right', ['NN', 'NNS', 'NNP', 'NNPS', 'NP', 'NAC', 'EX', '$', 'CD', 'QP', 'PRP', 'VBG', 'JJ', 'JJS', 'JJR', 'ADJP', 'FW']),
-  'META': ('right', [])
+# For TiGer, based on "Treebank-Based Grammar Acquisition for German", PhD Thesis, Ines Rehbein
+tiger_mapping_table = {
+  'AA': ('right', ['ADJD', 'PIS', 'PIAT', 'ADV', 'ADJA']),
+  'AP': ('right', ['ADJA', 'ADJD', 'CARD', 'ART', 'PIAT', 'NN', 'PIS', 'ADV', 'PDAT', 'VVPP', 'PTKNEG', 'PWAT', 'TRUNC']),
+  'AVP': ('right', ['ADV', 'PTKNEG', 'PROAV', 'PWAV', 'ADJD', 'PWAT', 'PIS', 'PTKA', 'PIAT', 'APPR', 'KOUS', 'PTKANT', 'KON', 'KOUS', 'NN']),
+  'CAC': ('right', ['KON']),
+  'CAP': ('right', ['KON', 'APPR', 'ADV']),
+  'CAVP': ('right', ['KON', 'APPR']),
+  'CCP': ('right', ['KON']),
+  'CH': ('right', ['NN', 'NE', 'FM', 'CARD', 'XY', 'KON', 'ADV', 'ITJ']),
+  'CNP': ('right', ['KON']),
+  'CO': ('right', ['KON', 'APPR', 'ADV', 'KOKOM', 'PROAV']),
+  'CPP': ('right', ['KON', 'ADV']),
+  'CS': ('right', ['KON', 'ADV']),
+  'CVP': ('right', ['KON']),
+  'CVZ': ('right', ['KON']),
+  'DL': ('right', ['NE', 'NN', 'KON', 'ADV', 'NP', 'PP', 'PN', 'CNP', 'S', 'CS']),
+  'ISU': ('left', ['ADV', 'APPR', 'KON', 'PIS']),
+  'MTA': ('right', ['ADJA', 'NE', 'NN']),
+  'NM': ('right', ['NN', 'CARD', 'ADJA']),
+  'NP': ('left', ['NN', 'NE', 'PPER', 'FM', 'PIS', 'PDS', 'PWS', 'PRELS', 'PRF', 'PPOSS', 'CH', 'CNP', 'NP', 'PIAT', 'PN', 'CARD', 'AP', 'ADJA', 'ART']),
+  'PN': ('right', ['NE', 'NNE', 'NN', 'NP', 'CNP']),
+  'PP': ('left', ['KOKOM', 'APPR', 'APPRART', 'APPO', 'PROAV', 'APZR', 'KOUS', 'NE', 'FM', 'PDS']),
+  'QL': ('right', ['CARD']),
+  'S': ('left', ['VAFIN', 'VMFIN', 'VVFIN', 'VVIMP', 'VAIMP', 'VVPP', 'VAINF', 'VMINF', 'VVFIN', 'VVIZU']),
+  'VP': ('left', ['VVPP', 'VVINF', 'VAINF', 'VMINF', 'VAPP', 'VMPP', 'VVIZU', 'VVFIN', 'VMFIN', 'VZ', 'CVZ', 'CVP', 'ADJD', 'TRUNC', 'PP']),
+  'VZ': ('right', ['VVINF', 'VMINF', 'VAINF', 'ADJA', 'VVIZU']),
+  "MPN": ('right', []),
 }
 
 def add_head(head_map, tree, head):
@@ -117,19 +229,24 @@ def add_if_match(tree, options, head_map, reverse=False):
 
 def collins_NP(tree, head_map):
   #TODO:todo handle NML properly
-  #TODO:todo Extra cases for NPs:
-### Ignore the row for NPs -- I use a special set of rules for this. For these
-### I initially remove ADJPs, QPs, and also NPs which dominate a possesive 
-### (tagged POS, e.g.  (NP (NP the man 's) telescope ) becomes 
-### (NP the man 's telescope)). These are recovered as a post-processing stage 
-### after parsing. The following rules are then used to recover the NP head:
+  all_NP_or_comma = True
+  first_NP = None
+  for i in xrange(len(tree.subtrees)):
+    subtree = tree.subtrees[i]
+    if subtree.label not in {'NP', ','}:
+      all_NP_or_comma = False
+    elif subtree.label != ',' and first_NP is None:
+      first_NP = subtree
+  if all_NP_or_comma:
+    add_head(head_map, tree, get_head(head_map, first_NP))
+    return
 
   if get_head(head_map, tree.subtrees[-1])[2] == 'POS':
     add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
     return
   if add_if_match(tree, {'NN', 'NNP', 'NNPS', 'NNS', 'NX', 'POS', 'JJR'}, head_map, True):
     return
-  if add_if_match(tree, {'NP', 'NML'}, head_map):
+  if add_if_match(tree, {'NP', 'NML'}, head_map, False):
     return
   if add_if_match(tree, {'$', 'ADJP', 'PRN'}, head_map, True):
     return
@@ -137,7 +254,15 @@ def collins_NP(tree, head_map):
     return
   if add_if_match(tree, {'JJ', 'JJS', 'RB', 'QP'}, head_map, True):
     return
-  add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
+  # Fallback, no punct
+  for i in xrange(len(tree.subtrees)):
+    i = len(tree.subtrees) - i - 1
+    subtree = tree.subtrees[i]
+    if not subtree.is_punct():
+      if not (len(subtree.label) > 2 and subtree.label.startswith('CC')):
+        if log: print "Match NP backup"
+        add_head(head_map, tree, get_head(head_map, subtree))
+        return
 
 def pennconverter_PP(tree, head_map):
 # ( 'left', [('first non-punctuation after preposition)']),
@@ -211,12 +336,17 @@ def pennconverter_is_coord(node):
 
   return False
 
-def pennconverter_find_heads(tree, head_map=None):
+def find_heads(tree, style, head_map=None):
+  mapping = pennconverter_mapping_table
+  if style == 'collins':
+    mapping = collins_mapping_table
+  elif 'jkk' in style:
+    mapping = jkk_mapping_table
   if head_map is None:
     head_map = {}
     tree = treebanks.remove_coindexation(tree, False)
   for subtree in tree.subtrees:
-    pennconverter_find_heads(subtree, head_map)
+    find_heads(subtree, style, head_map)
 
   if log: print "Head for", tree.span, tree.label
 
@@ -228,16 +358,59 @@ def pennconverter_find_heads(tree, head_map=None):
 
   # First handle conjunctions
   coord = pennconverter_is_coord(tree)
-  if coord:
+  if coord and style == 'pennconverter':
     if not add_if_match(tree, {'CC', 'CONJP'}, head_map, True):
       if not add_if_match(tree, {',', ':'}, head_map, True):
         add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
     return head_map
   
+  collins_coord = False
+  for subtree in tree.subtrees:
+    if subtree.label.startswith('CC') and len(subtree.label) > 2:
+      collins_coord = True
+  if len(tree.subtrees) > 2 and tree.subtrees[0].label == tree.label and tree.subtrees[1].label == 'CC':
+    collins_coord = True
+  if collins_coord and (style == 'collins' or 'jkk' in style):
+    # Options:
+    # 0 - First non-punct (collins)
+    # 1 - First conjunct
+    # 2 - First non-punct non-conjunct
+    # 3 - Last non-punct
+    # 4 - Last conjunct
+    # 5 - Last non-punct non-conjunct
+    for i in xrange(len(tree.subtrees)):
+      subtree = tree.subtrees[i]
+      if style == 'collins' or style == 'jkk' or style[-1] == '0':
+        if not subtree.is_punct():
+          if log: print "Match backup"
+          add_head(head_map, tree, get_head(head_map, subtree))
+          return head_map
+      elif style[-1] == '1':
+        if subtree.is_conjunction():
+          add_head(head_map, tree, get_head(head_map, subtree))
+          return head_map
+      elif style[-1] == '2':
+        if not (subtree.is_conjunction() or subtree.is_punct()):
+          add_head(head_map, tree, get_head(head_map, subtree))
+          return head_map
+      subtree = tree.subtrees[len(tree.subtrees) - i - 1]
+      if style[-1] == '3':
+        if not subtree.is_punct():
+          add_head(head_map, tree, get_head(head_map, subtree))
+          return head_map
+      elif style[-1] == '4':
+        if subtree.is_conjunction():
+          add_head(head_map, tree, get_head(head_map, subtree))
+          return head_map
+      elif style[-1] == '5':
+        if not (subtree.is_conjunction() or subtree.is_punct()):
+          add_head(head_map, tree, get_head(head_map, subtree))
+          return head_map
+
   # If the label for this node is not in the table we are either at the bottom,
   # at an NP, or have an error
   base_label = treebanks.split_label_type_and_function(tree.label)[0]
-  if base_label not in pennconverter_mapping_table:
+  if base_label not in mapping or base_label in ['NP', 'NML']:
     if base_label in ['NP', 'NML']:
       collins_NP(tree, head_map)
     elif base_label in ['PP', 'WHPP']:
@@ -247,27 +420,51 @@ def pennconverter_find_heads(tree, head_map=None):
     return head_map
   
   # Look through and take the first/last occurrence that matches
-  info = pennconverter_mapping_table[base_label]
+  info = mapping[base_label]
   for label in info[1]:
     for i in xrange(len(tree.subtrees)):
       if info[0] == 'right':
         i = len(tree.subtrees) - i - 1
       subtree = tree.subtrees[i]
       if isinstance(label, str):
-        if subtree.label == label:
-          add_head(head_map, tree, get_head(head_map, subtree))
-          return head_map
+###        if subtree.label == label:
+###          if log: print "Match add 1"
+###          add_head(head_map, tree, get_head(head_map, subtree))
+###          return head_map
+        if label in special_cases:
+          if subtree.word in special_cases[label]:
+            if log: print "Match add 1a"
+            add_head(head_map, tree, get_head(head_map, subtree))
+            return head_map
+        elif subtree.label == label:
+          if 'aux' not in info[1] or subtree.word not in special_cases['aux']:
+            if log: print "Match add 1"
+            add_head(head_map, tree, get_head(head_map, subtree))
+            return head_map
       else:
         if re.match(label, subtree.label) is not None:
+          if log: print "Match add 2"
           add_head(head_map, tree, get_head(head_map, subtree))
           return head_map
+
+  # Fallback, no punct
+  for i in xrange(len(tree.subtrees)):
+    if info[0] == 'right':
+      i = len(tree.subtrees) - i - 1
+    subtree = tree.subtrees[i]
+    if not subtree.is_punct():
+      if not (len(subtree.label) > 2 and subtree.label.startswith('CC')):
+        if log: print "Match backup"
+        add_head(head_map, tree, get_head(head_map, subtree))
+        return head_map
 
   # Final fallback
   if info[0] == 'left':
+    if log: print "Fallback add 1"
     add_head(head_map, tree, get_head(head_map, tree.subtrees[0]))
   else:
+    if log: print "Fallback add 2"
     add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
-
   return head_map
 
 '''Text from Collins' website:

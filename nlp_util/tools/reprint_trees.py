@@ -62,9 +62,10 @@ if __name__ == '__main__':
     print "Read trees from stdin and print them to stdout."
     print "Options:"
     print "  -(i)nput = (p)enn treebank | (c)onll | (s)plit head"
-    print "  -(o)utput = (s)ingle_line [with (t)races] | (m)ulti_line [with (t)races] | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | (h)ead automata"
+    print "  -(o)utput = (s)ingle_line [with (t)races] | (m)ulti_line [with (t)races] | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | (h)ead automata | (d)ependencies"
     print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries"
     print "  -(g)old = <gold filenmae> (can be used by the tex output)"
+    print "  -(h)ead rules = (p)ennconverter | (c)ollins | (t)iger"
     print "\ne.g. %s -o s -e tf < trees_in > trees_out" % sys.argv[0]
     sys.exit(0)
 
@@ -78,6 +79,13 @@ if __name__ == '__main__':
     read_func = treebanks.conll_read_tree
   elif 's' in in_format:
     read_func = treebanks.shp_read_tree
+
+  head_rules = 'pennconverter'
+  if 'h' in args:
+    if args['h'] == 'c':
+      head_rules = 'collins'
+    elif args['h'] == 't':
+      head_rules = 'tiger'
 
   if gold_file is not None:
     gold_file = treebanks.generate_trees(gold_file, read_func, allow_empty_labels=True)
@@ -130,7 +138,9 @@ if __name__ == '__main__':
     elif out_format == 'p':
       print render_tree.text_POS_tagged(tree)
     elif out_format == 'h':
-      print render_tree.shg_format(tree)
+      print render_tree.shg_format(tree, head_rules)
+    elif out_format == 'd':
+      print >> sys.stderr, "Not implemented yet"
     elif out_format == 't':
       if gold_tree is None:
         print '\\scalebox{\\derivscale}{'

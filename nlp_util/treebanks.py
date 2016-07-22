@@ -140,6 +140,149 @@ def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init
   tree.span = (oleft, left)
   return tree
 
+def is_possessive(parse):
+  if parse.label != 'NP':
+    return False
+  if len(parse.subtrees) < 2:
+    return False
+  if parse.subtrees[-1].label == 'POS' or parse.subtrees[-1].word in {"'s", "'S"}:
+    return True
+  return False
+
+def is_flat_NP(parse):
+  flat_NP = parse.label.startswith('NP') or parse.label.startswith('QP')
+  for subtree in parse.subtrees:
+    allowed = is_possessive(subtree) or subtree.is_terminal() or subtree.label in ['QP', 'ADJP', 'ADVP', 'S', 'PRN', 'PP', 'NAC', 'SBAR', 'NX', 'CONJP']
+    if not allowed:
+      flat_NP = False
+  return flat_NP
+
+def insert_CC_node(parse, start, end):
+  siblings = parse.subtrees[start:end]
+  span = (siblings[0].span[0], siblings[-1].span[1])
+  label = parse.label.split('=')[0]
+  if label[-1] in string.digits:
+    label = '-'.join(label.split('-')[:-1])
+  nlabel = label
+  if len(label) <= 2 or (not label.startswith("CC")):
+    nlabel = "CC"+ label
+  nnode = PSTree(None, nlabel, span, parse, siblings)
+  parse.subtrees[start] = nnode
+  for j in xrange(len(siblings) - 1):
+    parse.subtrees.pop(start + 1)
+
+def binarise_coordination(parse, method, in_place=True):
+  if method == 'k':
+    if not parse.label.startswith("CC"):
+      # Collins only places the conjunction and it's neighbour under the new node,
+      # not a complete right branching, e.g.  from above:
+      #     (UCP smaller (UCP_CC and (ADVP therefore)) (ADJP more affected))
+
+      # Whenever a child is a CC, take it and the next child, put them under a
+      # new node with a label taken from the parent
+
+      if not is_flat_NP(parse):
+        i = 1
+        while i < len(parse.subtrees) - 1:
+          if parse.subtrees[i].is_conjunction() and (not parse.subtrees[i+1].is_conjunction()):
+            prev_punc = parse.subtrees[i-1].is_punct()
+            end = i + 1
+            while parse.subtrees[end].is_punct() and end < len(parse.subtrees):
+              end += 1
+            if end < len(parse.subtrees):
+              end += 1
+            next_punc = parse.subtrees[end - 1].is_punct()
+            if not ((i == 1 and prev_punc) or next_punc):
+              insert_CC_node(parse, i, end)
+          i += 1
+  elif 'j' in method and '0' not in method:
+    # To check if this is a conjunction, look at the children, find a pattern of"
+    #  _ , _ , ... CC / CONJP _
+    # Note:
+    #  - The length of items may vary e.g. 
+    #     (VP baking and eating (NP cookies))
+    #     (UCP smaller and (ADVP therefore) (ADJP more affected))
+    #     (UCP highest quality and (ADJP most reasonably priced))
+    #  - The _'s may vary in type, e.g. (UCP (ADJP big) and (VP growing))
+    #  - Oxford comma (or similar uses) should be left high (to match punctuation use elsewhere)
+
+    # My version
+    # Binarise, with each part extending to include up to the next item of the same type
+    #   Only 'sell' here:
+    #     (VP (VB buy) (CC and) (VB sell) (NP (NNS futures) ...
+    #   The PP and what follows here:
+    #     (NP (NP (JJ nuclear) (NN power) ) (CC and) (PP-LOC (IN in) (NP (DT some) (NNS cases) )) (, ,) (NP ...
+    #   Not inside base NPs or QPs
+    #   Not for cases of a CC at the start of a phrase (ie must be a conjunction of things)
+    # Opions:
+    #   Should punctuation attach to the left or right?
+    #   Binaries with larger chunks on the left or right?
+
+    # 0 (A  ,  B  ,  C  and  D)  
+    # 1 (A (, B (, C (and D))))
+    # 2 (A , (B , (C and D)))
+    # 3 (A (, B) (, C) (and D))
+    # 4 ((((A ,) B ,) C and) D)
+    # 5 (((A , B) , C) and D)
+
+    if not is_flat_NP(parse):
+      # Check if it contains a conjunction
+      has_conj = False
+      seen_non_null = False
+      for i, subparse in enumerate(parse.subtrees):
+        if seen_non_null and subparse.is_conjunction():
+          has_conj = True
+        if subparse.wordspan[1] != subparse.wordspan[0]:
+          seen_non_null = True
+      if has_conj:
+        i = 1
+        while i < len(parse.subtrees) - 1:
+          if parse.subtrees[i].is_conjunction() or parse.subtrees[i].is_punct():
+            # Check for the case of a span that starts with punctuation and a conjunction
+            prev_punc = parse.subtrees[i-1].is_punct()
+            if not (i == 1 and prev_punc):
+              if '1' in method:
+                # (A (, B (, C (and D))))
+                insert_CC_node(parse, i, len(parse.subtrees))
+                break
+              elif '2' in method:
+                # (A , (B , (C and D)))
+                if i < len(parse.subtrees) - 1:
+                  insert_CC_node(parse, i + 1, len(parse.subtrees))
+                  break
+              elif '3' in method:
+                # (A (, B) (, C) (and D))
+                j = i + 1
+                # Consume any interveningg punctuation
+                while j < len(parse.subtrees) and (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct()):
+                  j += 1
+                # Consume all items until the next punctuation or conjunction
+                while j < len(parse.subtrees) and (not (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct())):
+                  j += 1
+                insert_CC_node(parse, i, j)
+
+          ri = len(parse.subtrees) - i - 1
+          if parse.subtrees[ri].is_conjunction() or parse.subtrees[ri].is_punct():
+            # Check for the case of a span that starts with punctuation and a conjunction
+            prev_punc = parse.subtrees[ri-1].is_punct()
+            if not (ri == 1 and prev_punc):
+              if '4' in method:
+                # ((((A ,) B ,) C and) D)
+                insert_CC_node(parse, 0, i + 1)
+                break
+              elif '5' in method:
+                # (((A , B) , C) and D)
+                if i > 1:
+                  insert_CC_node(parse, 0, i)
+                  break
+          i += 1
+
+  if in_place:
+    for subtree in parse.subtrees:
+      binarise_coordination(subtree, method, in_place)
+  else:
+    raise Exception
+
 def get_reference(text, sep='-'):
   if text == '0':
     return None
@@ -254,7 +397,20 @@ def remove_function_tags(tree, in_place=True):
   >>> remove_function_tags(tree)
   (ROOT (S (NP (`` ``) (NP (NNP Funny) (NNP Business)) ('' '') (PRN (-LRB- -LRB-) (NP (NNP Soho)) (, ,) (NP (CD 228) (NNS pages)) (, ,) (NP ($ $) (CD 17.95)) (-RRB- -RRB-)) (PP (IN by) (NP (NNP Gary) (NNP Katzenstein)))) (VP (VBZ is) (NP (NP (NN anything)) (PP (RB but)))) (. .)))
   '''
-  label = split_label_type_and_function(tree.label)[0]
+  label = tree.label
+  if len(label) > 0 and label[0] != '-':
+    num = None
+    if label[-1] in string.digits:
+      if '=' in label:
+        num = "=" + label.split('=')[-1]
+      else:
+        num = '-' + label.split('-')[-1]
+    symbol = label.split('-')[0].split('=')[0]
+    if num is None:
+      label = symbol
+    else:
+      label = symbol + num
+
   if in_place:
     for subtree in tree.subtrees:
       remove_function_tags(subtree, True)
@@ -419,18 +575,26 @@ def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
   >>> shp_read_tree(in_file)
   (ROOT (S (NP-SBJ-1 (DT A) (NN record) (NN date)) (VP (VBZ has) (RB n't) (VP (VBN been) (VP (VBN set) (NP (-NONE- *-1))))) (. .)))'''
   cur_text = []
+  is_empty = False
   while True:
     line = source.readline()
     if line == '':
       return None
     line = line.strip()
     if len(line) == 0:
-      break
+      if len(cur_text) > 0:
+        break
+      else:
+        continue
     if line[0] == '#':
       continue
+    elif '|' not in line:
+      is_empty = True
     assert line[0] in string.digits
     cur_text.append(line)
 
+  if is_empty:
+    return "Empty"
   tree = tree_from_shp(cur_text)
   ptb_cleaning(tree)
   return tree

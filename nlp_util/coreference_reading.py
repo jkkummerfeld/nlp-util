@@ -473,7 +473,7 @@ def read_conll_doc(filename, ans=None, rtext=True, rparses=True, rheads=True, rc
 					if rparses:
 						info['parses'] = read_conll_parses(cur)
 						if rheads:
-							info['heads'] = [head_finder.pennconverter_find_heads(parse) for parse in info['parses']]
+							info['heads'] = [head_finder.find_heads(parse) for parse in info['parses']]
 					if rclusters:
 						info['mentions'], info['clusters'] = read_conll_coref(cur)
 					if rner:
