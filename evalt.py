@@ -66,143 +66,108 @@ def get_reference(text, sep='-'):
     return None
   return text.split(sep)[-1]
 
-def get_traces(parse, mapping=None):
+def get_traces(node, mapping=None):
   if mapping is None:
-    mapping = ({}, {}, {}, {}, {}, {})
-  # 0 - The observed position of words
-  # 1 - Null position that can be traced somewhere
-  # 2 - The observed position of words that match other observed words
-  # 3 - The null position of unobserved words that are referenced
-  # 4 - The null position of unobserved words
+    mapping = (
+      {}, # num from [NP]-num mapping to the parse node
+      {}, # num from [NP]=num mapping to a list of parse nodes
+      {}, # num from (-NONE- [*]-num) to the parse node
+      [], # list of parse nodes like (-NONE- [no num])
+    )
 
-  # 0 - The observed position of words, e.g. NP-1
-  plabel = parse.label
+  # Recurse
+  for subnode in node.subtrees:
+    get_traces(subnode, mapping)
+
+  plabel = node.label
+
+  # 0 - num from [NP]-num mapping to the parse node
   if '-' in plabel and '=' not in plabel and get_reference(plabel) is not None:
-    signature = (parse.span, plabel)
-    num = plabel.split('-')[-1]
-    if signature not in mapping[0]:
-      mapping[0][signature] = []
-    mapping[0][signature].append((num, parse))
+    num = get_reference(plabel)
+    over_null = False
+    if node.wordspan[0] == node.wordspan[1]:
+      over_null = True
+    mapping[0][num] = (node, over_null)
 
-  # 1 - Null position that can be traced somewhere, e.g. (-NONE- *-1)
-  if plabel == '-NONE-' and get_reference(parse.word) is not None:
-    num = parse.word.split('-')[-1]
+  # 1 - num from [NP]=num mapping to a list of parse nodes
+  if '=' in plabel and get_reference(plabel, '=') is not None:
+    num = get_reference(plabel, '=')
     if num not in mapping[1]:
       mapping[1][num] = []
-    mapping[1][num].append(parse)
+    mapping[1][num].append(node)
 
-  # 2 - The observed position of words that match other observed words e.g. NP=1
-  if '=' in plabel and get_reference(plabel, '=') is not None:
-    num = plabel.split('=')[-1]
+  # 2 - num from (-NONE- [*]-num) to the parse node, e.g. inner node of:
+  #       (NP (-NONE- *-1))
+  #       (NP-SBJ-3 (-NONE- *T*-5))
+  if plabel == '-NONE-' and get_reference(node.word) is not None:
+    num = get_reference(node.word)
     if num not in mapping[2]:
       mapping[2][num] = []
-    mapping[2][num].append(parse)
+    mapping[2][num].append(node)
 
-  # 3 and 4 - The null position of unobserved words e.g. (-NONE- *), and (NP-SBJ-3 (-NONE- *T*-5) )
-  if plabel == '-NONE-' and get_reference(parse.word) is None:
-    ref = None
-    parent = parse
-    while parent.parent is not None and parent.wordspan[0] == parent.wordspan[1]:
-      if ref is None:
-        ref = get_reference(parent.label)
-      parent = parent.parent
-    signature = (parent.span, parent.label)
-    if signature not in mapping[4]:
-      mapping[4][signature] = []
-    mapping[4][signature].append((parent, parse))
-    # 3 - The null position of unobserved words that are referenced
-    if ref is not None:
-      if signature not in mapping[3]:
-        mapping[3][signature] = []
-      mapping[3][signature].append((parent, parse, ref))
-
-  for subparse in parse.subtrees:
-    get_traces(subparse, mapping)
+  # 3 - list of parse nodes like (-NONE- [no num]), e.g. inner node of:
+  #        (WHNP (-NONE- *))
+  #        (WHADVP-1 (-NONE- 0))
+  if plabel == '-NONE-' and get_reference(node.word) is None:
+    mapping[3].append(node)
 
   return mapping
 
-def get_span(node):
+def get_nonzero_span(node):
   if node.wordspan[0] == node.wordspan[1]:
-    return get_span(node.parent)
+    return get_nonzero_span(node.parent)
   else:
     return node.wordspan
 
 def mapping_to_items(mapping):
-  # 0 - The observed position of words
-  # 1 - Null position that can be traced somewhere
-  # 2 - The observed position of words that match other observed words
-  # 3 - The null position of unobserved words that are referenced
-  # 4 - The null position of unobserved words
+  # 0 - num from [NP]-num mapping to the parse node
+  # 1 - num from [NP]=num mapping to a list of parse nodes
+  # 2 - num from (-NONE- [*]-num) to the parse node
+  # 3 - list of parse nodes like (-NONE- [no num])
 
   items = []
 
   # Add items without coindexation
-  for signature in mapping[4]:
-    for parent, node in mapping[4][signature]:
-      label = ""
-      if node.parent.wordspan[0] == node.parent.wordspan[1]:
-        label = node.parent.label.split('-')[0]
-      items.append((node.word.split('-')[0], get_span(node), label))
-
-  # Add items with simple coindexation
-  for num in mapping[1]:
-    for node in mapping[1][num]:
-      # Find referent
-      refs = []
-      for signature in mapping[0]:
-        for onum, onode in mapping[0][signature]:
-          if onum == num:
-            refs.append(onode)
-      if len(refs) != 1:
-        print("Error - could not resolve trace", num, node, refs)
-      ref = refs[0]
-      label = ""
-      if node.parent.wordspan[0] == node.parent.wordspan[1]:
-        label = node.parent.label.split('-')[0]
-      items.append((node.word.split('-')[0], get_span(node), label, get_span(ref), ref.label.split('-')[0]))
+  for node in mapping[3]:
+    label = ""
+    if node.parent.wordspan[0] == node.parent.wordspan[1]:
+      label = node.parent.label.split('-')[0]
+    items.append((
+      "empty",
+      node.word.split('-')[0],
+      get_nonzero_span(node),
+      label
+    ))
 
   # Add items with gapping
+  for num in mapping[1]:
+    ref = mapping[0][num][0]
+    for node in mapping[1][num]:
+      items.append((
+        "gap",
+        get_nonzero_span(node),
+        node.label.split('=')[0],
+        get_nonzero_span(ref),
+        ref.label.split('-')[0]
+      ))
+
+  # Add items with coindexation
   for num in mapping[2]:
     for node in mapping[2][num]:
-      # Find referent
-      refs = []
-      for signature in mapping[0]:
-        for onum, onode in mapping[0][signature]:
-          if onum == num:
-            refs.append(onode)
-      if len(refs) != 1:
-        for info in mapping:
-          print(info)
-        raise Exception("Error - could not resolve trace", num, node, refs)
-      ref = refs[0]
-      items.append(("gapping", get_span(node), node.label.split('=')[0], get_span(ref), ref.label.split('-')[0]))
-
-  # Add items with chained coindexation
-  for signature in mapping[3]:
-    for parent, node, num in mapping[3][signature]:
-      # Follow chain
-      in_chain = True
-      while in_chain:
-        in_chain = False
-        for osignature in mapping[3]:
-          if '=' not in osignature[1]:
-            for oparent, onode, onum in mapping[3][signature]:
-              oref = get_reference(onode.word)
-              if oref == num:
-                in_chain = True
-                num = onum
-      refs = []
-      for signature in mapping[0]:
-        for onum, onode in mapping[0][signature]:
-          if onum == num:
-            refs.append(onode)
-      if len(refs) != 1:
-        print("Error - could not resolve trace", num, node, refs)
-      ref = refs[0]
-      label = ""
-      if node.parent.wordspan[0] == node.parent.wordspan[1]:
-        label = node.parent.label.split('-')[0]
-      items.append((node.word.split('-')[0], get_span(node), label, get_span(ref), ref.label.split('-')[0]))
+      ref = mapping[0][num]
+      while ref[1]:
+        child = ref[0].subtrees[0]
+        ref_num = get_reference(child.word)
+        if ref_num is None:
+          break
+        ref = mapping[0][ref_num]
+      ref = ref[0]
+      items.append((
+        node.word.split('-')[0],
+        get_nonzero_span(node),
+        ref.label.split('-')[0],
+        get_nonzero_span(ref)
+      ))
 
   return items
 
@@ -299,11 +264,11 @@ while True:
 
   # Score and report
   print("Gold", gold_tree)
-  print("Test", test_tree)
   gold_traces = get_traces(gold_tree)
-  test_traces = get_traces(test_tree)
-
   gold_items = mapping_to_items(gold_traces)
+
+  print("Test", test_tree)
+  test_traces = get_traces(test_tree)
   test_items = mapping_to_items(test_traces)
 
   match = 0
@@ -312,21 +277,18 @@ while True:
       match += 1
       print("  Match", item)
       if item[0] not in match_by_type:
-        match_by_type[item[0]] = 1
-      else:
-        match_by_type[item[0]] += 1
+        match_by_type[item[0]] = 0
+      match_by_type[item[0]] += 1
   for item in gold_items:
     if item[0] not in gold_by_type:
-      gold_by_type[item[0]] = 1
-    else:
-      gold_by_type[item[0]] += 1
+      gold_by_type[item[0]] = 0
+    gold_by_type[item[0]] += 1
     if item not in test_items:
       print("  Missing gold", item)
   for item in test_items:
     if item[0] not in test_by_type:
-      test_by_type[item[0]] = 1
-    else:
-      test_by_type[item[0]] += 1
+      test_by_type[item[0]] = 0
+    test_by_type[item[0]] += 1
     if item not in gold_items:
       print("  Extra test", item)
   print(match, len(test_items), len(gold_items))
