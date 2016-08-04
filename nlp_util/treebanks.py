@@ -171,6 +171,15 @@ def insert_CC_node(parse, start, end):
   for j in xrange(len(siblings) - 1):
     parse.subtrees.pop(start + 1)
 
+def contains_conjunction(parse):
+  seen_non_null = False
+  for i, subparse in enumerate(parse.subtrees):
+    if seen_non_null and subparse.is_conjunction():
+      return True
+    if subparse.wordspan[1] != subparse.wordspan[0] and not (parse.subtrees[i].is_conjunction() or parse.subtrees[i].is_punct()):
+      seen_non_null = True
+  return False
+
 def binarise_coordination(parse, method, in_place=True):
   if method == 'k':
     if not parse.label.startswith("CC"):
@@ -224,57 +233,65 @@ def binarise_coordination(parse, method, in_place=True):
     # 3 (A (, B) (, C) (and D))
     # 4 ((((A ,) B ,) C and) D)
     # 5 (((A , B) , C) and D)
+    # 6 ((A ,) (B ,) (C and) D)
 
     if not is_flat_NP(parse):
       # Check if it contains a conjunction
-      has_conj = False
-      seen_non_null = False
-      for i, subparse in enumerate(parse.subtrees):
-        if seen_non_null and subparse.is_conjunction():
-          has_conj = True
-        if subparse.wordspan[1] != subparse.wordspan[0]:
-          seen_non_null = True
-      if has_conj:
+      done = False
+      while contains_conjunction(parse) and not done:
         i = 1
+        done = True
         while i < len(parse.subtrees) - 1:
           if parse.subtrees[i].is_conjunction() or parse.subtrees[i].is_punct():
-            # Check for the case of a span that starts with punctuation and a conjunction
-            prev_punc = parse.subtrees[i-1].is_punct()
-            if not (i == 1 and prev_punc):
-              if '1' in method:
-                # (A (, B (, C (and D))))
-                insert_CC_node(parse, i, len(parse.subtrees))
+            done = False
+            next_conjunct = len(parse.subtrees)
+            for option in range(i, len(parse.subtrees)):
+              if not (parse.subtrees[option].is_conjunction() or parse.subtrees[option].is_punct()):
+                next_conjunct = option
                 break
-              elif '2' in method:
-                # (A , (B , (C and D)))
-                if i < len(parse.subtrees) - 1:
-                  insert_CC_node(parse, i + 1, len(parse.subtrees))
-                  break
-              elif '3' in method:
-                # (A (, B) (, C) (and D))
-                j = i + 1
-                # Consume any interveningg punctuation
-                while j < len(parse.subtrees) and (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct()):
-                  j += 1
-                # Consume all items until the next punctuation or conjunction
-                while j < len(parse.subtrees) and (not (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct())):
-                  j += 1
-                insert_CC_node(parse, i, j)
 
-          ri = len(parse.subtrees) - i - 1
-          if parse.subtrees[ri].is_conjunction() or parse.subtrees[ri].is_punct():
-            # Check for the case of a span that starts with punctuation and a conjunction
-            prev_punc = parse.subtrees[ri-1].is_punct()
-            if not (ri == 1 and prev_punc):
-              if '4' in method:
-                # ((((A ,) B ,) C and) D)
-                insert_CC_node(parse, 0, i + 1)
+            if '1' in method:
+              # (A (, B (, C (and D))))
+              insert_CC_node(parse, i, len(parse.subtrees))
+              break
+            elif '2' in method:
+              # (A , (B , (C and D)))
+              if next_conjunct < len(parse.subtrees) - 1:
+                insert_CC_node(parse, next_conjunct, len(parse.subtrees))
                 break
-              elif '5' in method:
-                # (((A , B) , C) and D)
-                if i > 1:
-                  insert_CC_node(parse, 0, i)
-                  break
+              done = True
+            elif '3' in method:
+              # (A (, B) (, C) (and D))
+              j = i + 1
+              # Consume any interveningg punctuation
+              while j < len(parse.subtrees) and (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct()):
+                j += 1
+              # Consume all items until the next punctuation or conjunction
+              while j < len(parse.subtrees) and (not (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct())):
+                j += 1
+              insert_CC_node(parse, i, j)
+            elif '4' in method:
+              # ((((A ,) B ,) C and) D)
+              if next_conjunct < len(parse.subtrees):
+                insert_CC_node(parse, 0, next_conjunct)
+                break
+              done = True
+            elif '5' in method:
+              # (((A , B) , C) and D)
+              if next_conjunct < len(parse.subtrees) - 1:
+                insert_CC_node(parse, 0, next_conjunct + 1)
+                break
+              done = True
+            elif '6' in method:
+              # ((A ,) (B ,) (C and) D)
+              j = i
+              # Consume any interveningg punctuation
+              while j < len(parse.subtrees) and (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct()):
+                j += 1
+              if j < len(parse.subtrees):
+                insert_CC_node(parse, i - 1, j)
+              done = True
+              i = 1
           i += 1
 
   if in_place:
