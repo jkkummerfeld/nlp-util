@@ -111,14 +111,14 @@ class PSTree:
     return self.label == TRACE_LABEL
 
   def is_punct(self):
-    if self.label in "IN TO RB AUX DT" or self.word is None:
+    if self.label in {"IN", "TO", "RB", "AUX", "DT"} or self.word is None:
       return False
-    if self.word in "! # ' '' * , - -- . ... : ; = ? @ \* \*\* ` ``":
+    if self.word in {"!", "#", "'", "''", "*", ",", "-", "--", ".", "...", ":", ";", "=", "?", "@", "\*", "\*\*", "`", "``"}:
       return True
     return False
 
   def is_conjunction(self):
-    return self.label in 'CC CONJP'
+    return self.label in {'CC', 'CONJP'}
 
   def root(self):
     '''Follow parents until a node is reached that has no parent.'''

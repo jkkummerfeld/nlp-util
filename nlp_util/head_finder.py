@@ -366,18 +366,21 @@ def find_heads(tree, style, head_map=None):
   
   collins_coord = False
   for subtree in tree.subtrees:
-    if subtree.label.startswith('CC') and len(subtree.label) > 2:
-      collins_coord = True
+    if subtree.label.startswith('CC'):
+      if len(subtree.label) > 2:
+        collins_coord = True
+      elif 'jkk' in style and len(tree.subtrees) > 2:
+        collins_coord = True
   if len(tree.subtrees) > 2 and tree.subtrees[0].label == tree.label and tree.subtrees[1].label == 'CC':
     collins_coord = True
   if collins_coord and (style == 'collins' or 'jkk' in style):
     # Options:
     # 0 - First non-punct (collins)
-    # 1 - First conjunct
-    # 2 - First non-punct non-conjunct
+    # 1 - First conjunction
+    # 2 - First non-punct non-conjunction
     # 3 - Last non-punct
-    # 4 - Last conjunct
-    # 5 - Last non-punct non-conjunct
+    # 4 - Last conjunction
+    # 5 - Last non-punct non-conjunction
     for i in xrange(len(tree.subtrees)):
       subtree = tree.subtrees[i]
       if style == 'collins' or style == 'jkk' or style[-1] == '0':
