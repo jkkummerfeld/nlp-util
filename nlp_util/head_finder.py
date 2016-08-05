@@ -21,6 +21,7 @@ jkk_mapping_table = {
   "PP": ("right", "IN TO VBG VBN RP FW".split()),
 ###  "PRN": ("left", []), # pre March 2
   "PRN": ("left", "S VP".split()), # March 2b
+###  "PRN": ("left", ["S", "VP", re.compile('^[A-Z]')]), # post thesis
   "PRT": ("right", "RP"),
   "QP": ("left", "$ IN NNS NN JJ RB DT CD NCD QP JJR JJS".split()),
   "RRC": ("right", "VP NP ADVP ADJP PP".split()),
@@ -241,7 +242,7 @@ def collins_NP(tree, head_map):
     add_head(head_map, tree, get_head(head_map, first_NP))
     return
 
-  if get_head(head_map, tree.subtrees[-1])[2] == 'POS':
+  if (not tree.subtrees[-1].is_trace) and get_head(head_map, tree.subtrees[-1])[2] == 'POS':
     add_head(head_map, tree, get_head(head_map, tree.subtrees[-1]))
     return
   if add_if_match(tree, {'NN', 'NNP', 'NNPS', 'NNS', 'NX', 'POS', 'JJR'}, head_map, True):
