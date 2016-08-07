@@ -60,7 +60,7 @@ if __name__ == '__main__':
     print "Read trees from stdin and print them to stdout."
     print "Options:"
     print "  -(i)nput = (p)enn treebank | (c)onll | split (h)ead"
-    print "  -(o)utput = (s)ingle_line [with (t)races] | (m)ulti_line [with (t)races] | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | split (h)ead | (d)ependencies"
+    print "  -(o)utput = (s)ingle_line [with (t)races] | (m)ulti_line [with (t)races] | (o)riginal ptb | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | split (h)ead | (d)ependencies"
     print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries, right (b)inarise coordination, cc(k)-style binarise coordination, remove (e)xtra coordination nodes, (j)kk-style coordination"
     print "  -(g)old = <gold filenmae> (can be used by the tex output)"
     print "  -(l)ength = number (will leave out sentences longer than this)"
@@ -128,8 +128,10 @@ if __name__ == '__main__':
         gold_tree = treebanks.homogenise_tree(gold_tree)
     if 't' in edits:
       treebanks.remove_traces(tree)
+      treebanks.remove_coindexation(tree)
       if gold_tree is not None:
         treebanks.remove_traces(gold_tree)
+        treebanks.remove_coindexation(gold_tree)
     if 'f' in edits:
       treebanks.remove_function_tags(tree)
       if gold_tree is not None:
@@ -173,6 +175,8 @@ if __name__ == '__main__':
         print render_tree.text_tree(tree, single_line=True, show_traces=True)
       elif out_format == 'mt':
         print render_tree.text_tree(tree, single_line=False, show_traces=True)
+      elif out_format == 'o':
+        print render_tree.text_tree(tree, single_line=False, show_traces=True, match_ptb=True)
       elif out_format == 'o':
         print render_tree.text_ontonotes(tree)
       elif out_format == 'p':

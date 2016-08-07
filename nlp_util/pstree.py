@@ -85,6 +85,7 @@ class PSTree:
     self.span = span
     self.wordspan = span
     self.parent = parent
+    self.unique_id = None
     self.subtrees = []
     if subtrees is not None:
       self.subtrees = subtrees
@@ -141,6 +142,14 @@ class PSTree:
       ans += ' ' + subtree.__repr__()
     ans += ')'
     return ans
+
+  def set_unique_id(self, cur=0):
+    '''Set a unique numerical ID for each node.'''
+    self.unique_id = cur
+    cur += 1
+    for subtree in self.subtrees:
+      cur = subtree.set_unique_id(cur)
+    return cur
 
   def calculate_spans(self, left=0, wordleft=0):
     '''Update the spans for every node in this tree.'''
@@ -348,11 +357,27 @@ def tree_from_text(text, allow_empty_labels=False, allow_empty_words=False):
   root.calculate_spans()
   return root
 
+def get_reference(text, sep='-'):
+  # Work backwards through it
+  cur = []
+  for char in text[::-1]:
+    if char in string.digits:
+      cur.append(char)
+    elif char == sep:
+      if len(cur) == 0:
+        return None
+      else:
+        return ''.join(cur)
+    elif char in {'-', '='}:
+      cur = []
+  return None
+
 def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
   '''Construct a PSTree from the provided split head grammar parse.'''
   # Create spine defined non-terminals
   nodes = {}
   sent_len = 0
+  nulls_to_add = []
   for line in text:
     # Extract data
     parts = line.strip().split()
@@ -361,216 +386,152 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
     word = parts[1]
     POS = parts[2]
     spine = parts[3]
-    structural_edge = None
+
+    tnum = int(parts[4])
+    tlabel = parts[5]
+    structural_edge = (tnum, tlabel)
+
     trace_edges = []
-    for edge in line.split(" | ")[1:]:
-      edge_info = edge.split()
-      tnum = int(edge_info[0])
-      tlabel = edge_info[1].split('_')[0]
-      tlabel_count = int(edge_info[1].split('_')[1])
-      slabel = edge_info[2].split('_')[0]
-      slabel_count = int(edge_info[2].split('_')[1])
-      trace = edge_info[3]
-      edge = (tnum, tlabel, tlabel_count, slabel, slabel_count, trace)
-      if trace == '_':
-        structural_edge = edge
-      else:
-        trace_edges.append(edge)
+    for i in range(6, len(parts), 6):
+      tnum = int(parts[i])
+      tlabel = parts[i + 1]
+      tlabel += "_T" if parts[i + 2] == 'T' else "_F"
+      slabel = parts[i + 3]
+      slabel += "_T" if parts[i + 4] == 'T' else "_F"
+      trace = parts[i + 5]
+      edge = (tnum, tlabel, slabel, trace)
+      trace_edges.append(edge)
 
     # Make spine
-    nodes[num] = (word, POS, spine, structural_edge, trace_edges, [
-      (PSTree(word, POS, (num - 1, num)), False)
-    ])
+    prev_node = PSTree(word, POS, (num - 1, num))
+    symbol_count = defaultdict(lambda: 0)
+    node_map = {
+      POS +"_0_F": prev_node
+    }
+    nodes[num] = (word, POS, spine, structural_edge, trace_edges, node_map)
     if spine != '_':
-      # tokenise
-      sparts = ['']
-      in_braces = False
-      for char in spine:
-        if char == '(':
-          in_braces = True
-          sparts.append('')
-        elif char == ')':
-          in_braces = False
-        if not in_braces and char == '_':
-          sparts.append('')
-        else:
-          sparts[-1] += char
-
-      for symbol in sparts:
-        if symbol[0] != '(':
-          node = PSTree(None, symbol, (num - 1, num), None, [nodes[num][-1][-1][0]])
-          nodes[num][-1].append((node, False))
-        else:
-          subparts = symbol[1:-1].split('_')
-          subparts.reverse()
-          cur = PSTree(subparts[0], TRACE_LABEL, (num - 1, num - 1))
-          for part in subparts[1:]:
-            node = PSTree(None, part, (num - 1, num - 1), None, [cur])
-            cur = node
-          parent = nodes[num][-1][-1][0]
-          if cur.label.startswith("NP-SBJ") or (subparts[0] == "0" and not cur.label.startswith("SBAR")):
-            parent.subtrees.insert(0, cur)
+      cur = []
+      depth = 0
+      null_node = []
+      for char in spine +"_":
+        if char == ')':
+          cur.append(")")
+          depth -= 1
+        elif char == '(':
+          cur.append("(")
+          depth += 1
+        elif char == '_':
+          if depth != 0:
+            cur.append(" ")
           else:
-            parent.subtrees.append(cur)
-          cur.parent = parent
-          nodes[num][-1].insert(len(nodes[num][-1]) - 1, (cur, True))
-
-###  for num in nodes:
-###    print nodes[num]
+            # Generate new node
+            if '(' not in cur:
+              symbol = ''.join(cur)
+              node = PSTree(None, symbol, (num - 1, num), None, [prev_node])
+              prev_node.parent = node
+              count = symbol_count[symbol +"_F"]
+              symbol_count[symbol +"_F"] += 1
+              node_map["{}_{}_F".format(symbol, count)] = node
+              prev_node = node
+              if len(null_node) > 0:
+                for null in null_node:
+                  nulls_to_add.append((null, node))
+                null_node = []
+            else:
+              modified = []
+              to_add = []
+              for char2 in cur:
+                to_add.append(char2)
+                if char2 == ')':
+                  if not ' ' in to_add and len(to_add) > 1:
+                    to_add[0] += '-NONE- '
+                  modified.append(''.join(to_add))
+                  to_add = []
+                elif char2 == '(':
+                  modified.append(''.join(to_add[:-1]))
+                  to_add = ['(']
+              modified = ''.join(modified)
+              null = tree_from_text(modified)
+              for node in null:
+                symbol = node.label
+                count = symbol_count[symbol +"_T"]
+                symbol_count[symbol +"_T"] += 1
+                node_map["{}_{}_T".format(symbol, count)] = node
+              null_node.append(null)
+            cur = []
+        else:
+          cur.append(char)
 
   # Link together with structural edges, ensuring proper nesting
   root = None
-  for i in xrange(1, len(nodes) + 1):
-    target_info = nodes[i]
-    if 'ROOT' in target_info[3][1]:
-      root = PSTree(None, "ROOT", (0, sent_len), None, [target_info[-1][-1][0]])
-    target_nodes = target_info[-1]
-    # Check to the left
-    cpos = -1
-    for j in xrange(i - 1, 0, -1):
-      src_info = nodes[j]
-      tnum, tlabel, tlabel_count, slabel, slabel_count, trace = src_info[3]
-      if tnum == i:
-        src = src_info[-1][-1][0]
-        npos = 0
-        count = -1
-        while npos < len(target_nodes):
-          if target_nodes[npos][0].label == tlabel and not target_nodes[npos][1]:
-            count += 1
-            if count == tlabel_count:
-              npos = max(npos, cpos)
-              target = target_nodes[npos][0]
-              src.parent = target
-              target.subtrees.insert(0, src)
-              cpos = npos
-              break
-          npos += 1
-    # Check to the right
-    cpos = -1
-    for j in xrange(i + 1, len(nodes) + 1):
-      src_info = nodes[j]
-      tnum, tlabel, tlabel_count, slabel, slabel_count, trace = src_info[3]
-      if tnum == i:
-        src = src_info[-1][-1][0]
-        npos = 0
-        count = -1
-        while npos < len(target_nodes):
-          if target_nodes[npos][0].label == tlabel and not target_nodes[npos][1]:
-            count += 1
-            if count == tlabel_count:
-              npos = max(npos, cpos)
-              target = target_nodes[npos][0]
-              src.parent = target
-              target.subtrees.append(src)
-              cpos = npos
-              break
-          npos += 1
+  for length in xrange(1, len(nodes) + 1):
+    for pos in nodes:
+      word, POS, spine, structural_edge, trace_edges, node_map = nodes[pos]
+      tnum, tlabel = structural_edge
+      if abs(pos - tnum) == length:
+        top = None
+        for name in node_map:
+          if node_map[name].parent is None and name.endswith("_F"):
+            top = node_map[name]
+        if tnum == 0:
+          root = PSTree(None, "ROOT", (0, sent_len), None, [top])
+          top.parent = root
+        else:
+          left = tnum > pos
+          target_info = nodes[tnum]
+          tlabel += "_F"
+          tnode = target_info[5][tlabel]
+          top.parent = tnode
+          if left:
+            tnode.subtrees.insert(0, top)
+          else:
+            tnode.subtrees.append(top)
+
+  # TODO: gather stats on the original trees
+  for null, node in nulls_to_add:
+    pos = len(node.subtrees)
+    if null.label.startswith("ADVP"):
+      pass
+    elif node.label.startswith("SBAR") or null.label.startswith("NP-SBJ"):
+      pos = 0
+    else:
+      npos = 0
+      for subnode in node.subtrees:
+        npos += 1
+        if subnode.label.startswith("VB"):
+          pos = npos
+        if subnode.label.startswith("LST"):
+          pos = npos + 1
+          break
+        if subnode.label.startswith("VP"):
+          pos = max(0, npos - 1)
+          break
+    if len(node.subtrees) > pos:
+      sub_label = node.subtrees[pos].label
+      if sub_label.startswith("-L") or sub_label in {",", "LST", "``"}:
+        pos += 1
+    node.subtrees.insert(pos, null)
+    null.parent = node
+
   root.calculate_spans()
 
   # Add traces
-  trace_map = {}
-  traced_map = {}
-  equal_map = {}
-  done = set()
-  next_tid = 1
-  for snum in nodes:
-    info = nodes[snum]
-    edges = info[4]
-    edges_normal = filter(lambda x: "_chain" not in x[5], edges)
-    edges_chain = filter(lambda x: "_chain" in x[5], edges)
-    for tnum, tlabel, tlabel_count, slabel, slabel_count, trace in edges_normal + edges_chain:
-      if trace != "_":
-        src = None
-        count = -1
-        for option, trace_option in info[-1]:
-          if option.label == slabel:
-            count += 1
-            if count == slabel_count:
-              src = option
-              break
+  max_index = 0
+  for num in nodes:
+    for tnum, tlabel, slabel, trace in nodes[num][4]:
+      snode = nodes[num][5][slabel]
+      tnode = nodes[tnum][5][tlabel]
+      identity = get_reference(snode.label)
+      if identity is None:
+        max_index += 1
+        identity = max_index
+        snode.label += "-{}".format(identity)
 
-        count = -1
-        for target, trace_target in nodes[tnum][-1]:
-          if target.label == tlabel:
-            count += 1
-            if count == tlabel_count:
-              if '=' not in trace:
-                trace_symbol = trace.split('_')[0]
-                trace_word = trace.split('_')[1]
-                in_chain = len(trace.split('_')) > 2
-                tid = next_tid
-                if not in_chain:
-                  if (snum, slabel, slabel_count) in trace_map:
-                    tid = trace_map[(snum, slabel, slabel_count)]
-                  else:
-                    trace_map[(snum, slabel, slabel_count)] = tid
-                    next_tid += 1
-                else:
-                  # Find the parent symbol it needs to modify
-                  if (snum, slabel, slabel_count) not in done:
-                    previous = traced_map[(snum, slabel, slabel_count)]
-                    previous.label += "-" + str(tid)
-                    done.add((snum, slabel, slabel_count))
-                    next_tid += 1
-                node = PSTree(trace_word + "-" + str(tid), TRACE_LABEL)
-                parent = PSTree(None, trace_symbol, subtrees=[node])
-                node.parent = parent
-                if not in_chain:
-                  traced_map[(snum, slabel, slabel_count)] = parent
-                # Insert node
-                if parent.label.startswith("NP-SBJ"):
-                  target.subtrees.insert(0, parent)
-                elif parent.label.startswith("NP") or '?' in trace_word:
-                  # Find verb and insert afterwards
-                  inserted = False
-                  for i in range(len(target.subtrees)):
-                    sibling = target.subtrees[i]
-                    if sibling.label.startswith("V") and sibling.is_terminal():
-                      target.subtrees.insert(i+1, parent)
-                      inserted = True
-                      break
-                  if not inserted:
-                    target.subtrees.append(parent)
-                else:
-                  target.subtrees.append(parent)
-                parent.parent = target
-              else:
-                # Find the part that corresponds to this
-                tid = next_tid
-                if (tnum, tlabel, tlabel_count) in trace_map:
-                  tid = trace_map[(tnum, tlabel, tlabel_count)]
-                else:
-                  trace_map[(tnum, tlabel, tlabel_count)] = tid
-                  next_tid += 1
-                equal_map[(snum, slabel, slabel_count)] = tid
+      if trace == '=':
+        tnode.label += "={}".format(identity)
+      else:
+        tnode.subtrees[0].word += "-{}".format(identity)
 
-  # Add co-indexation
-  for num, label, label_count in trace_map:
-    count = -1
-    for subparse, trace_subparse in nodes[num][-1]:
-      if subparse.label == label:
-        count += 1
-        if count == label_count:
-          subparse.label += '-' + str(trace_map[(num, label, count)])
-  for num, label, label_count in equal_map:
-    count = -1
-    for subparse, trace_subparse in nodes[num][-1]:
-      if subparse.label == label:
-        count += 1
-        if count == label_count:
-          subparse.label += '=' + str(equal_map[(num, label, count)])
-
-  # Move *U* to the end
-  to_move = []
-  for node in root:
-    for i in range(len(node.subtrees)):
-      if node.subtrees[i].word == "*U*" and i != len(node.subtrees) - 1:
-        to_move.append((node, i))
-  for node, i in to_move:
-    unit = node.subtrees.pop(i)
-    node.subtrees.append(unit)
-
-  root.calculate_spans()
   return root
 
 def clone_and_find(nodes):

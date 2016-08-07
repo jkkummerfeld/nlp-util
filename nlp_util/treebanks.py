@@ -300,61 +300,67 @@ def binarise_coordination(parse, method, in_place=True):
   else:
     raise Exception
 
-def get_reference(text, sep='-'):
-  if text == '0':
+def follow_chain_in_mapping(mapping, num, trace_group=2):
+  if num not in mapping[0]:
     return None
-  for char in text.split(sep)[-1]:
-    if char not in string.digits:
-      return None
-  if len(text.split(sep)[-1]) == 0:
-    return None
-  return text.split(sep)[-1]
+  ref = mapping[0][num]
+  if trace_group == 2:
+    while ref[1]:
+      ref_num = None
+      for child in ref[0].subtrees:
+        if child.label == TRACE_LABEL:
+          ref_num = get_reference(child.word)
+          if ref_num is not None:
+            break
+      if ref_num is None or ref_num not in mapping[0]:
+        break
+      ref = mapping[0][ref_num]
+  return ref[0]
 
-def resolve_traces(parse, mapping=None):
+def resolve_traces(node, mapping=None):
   if mapping is None:
-    mapping = ({}, {}, {}, {}, {}, {})
-  # 0 - The observed position of words
-  # 1 - Null position that can be traced somewhere
-  # 2 - The observed position of words that match other observed words
-  # 3 - The null position of unobserved words that are referenced
-  # 4 - The null position of unobserved words
+    mapping = (
+      {}, # num from [NP]-num mapping to the parse node
+      {}, # num from [NP]=num mapping to a list of parse nodes
+      {}, # num from (-NONE- [*]-num) to a list of parse nodes
+      [], # list of parse nodes like (-NONE- [no num])
+    )
 
-  # 0 - The observed position of words
-  plabel = parse.label
-  if '-' in plabel and '=' not in plabel and get_reference(plabel) is not None:
-    signature = (parse.span, plabel)
-    num = plabel.split('-')[-1]
-    mapping[0][signature] = (num, parse)
+  # Recurse
+  for subnode in node.subtrees:
+    resolve_traces(subnode, mapping)
 
-  # 1 - Null position that can be traced somewhere
-  if plabel == '-NONE-' and get_reference(parse.word) is not None:
-    num = parse.word.split('-')[-1]
+  plabel = node.label
+
+  # 0 - num from [NP]-num mapping to the parse node
+  num = get_reference(plabel, '-')
+  if num is not None:
+    over_null = False
+    if node.wordspan[0] == node.wordspan[1]:
+      over_null = True
+    mapping[0][num] = (node, over_null)
+
+  # 1 - num from [NP]=num mapping to a list of parse nodes
+  num = get_reference(plabel, '=')
+  if num is not None:
     if num not in mapping[1]:
       mapping[1][num] = []
-    mapping[1][num].append(parse)
+    mapping[1][num].append(node)
 
-  # 2 - The observed position of words that match other observed words
-  if '=' in plabel and get_reference(plabel, '=') is not None:
-    num = plabel.split('=')[-1]
+  # 2 - num from (-NONE- [*]-num) to a list of parse nodes, e.g. inner node of:
+  #       (NP (-NONE- *-1))
+  #       (NP-SBJ-3 (-NONE- *T*-5))
+  if plabel == '-NONE-' and get_reference(node.word) is not None:
+    num = get_reference(node.word)
     if num not in mapping[2]:
       mapping[2][num] = []
-    mapping[2][num].append(parse)
+    mapping[2][num].append(node)
 
-  # 3 and 4 - The null position of unobserved words
-  if plabel == '-NONE-' and get_reference(parse.word) is None:
-    ref = None
-    parent = parse
-    while parent.parent is not None and parent.wordspan[0] == parent.wordspan[1]:
-      ref = get_reference(parent.label)
-      parent = parent.parent
-    signature = (parent.span, parent.label)
-    mapping[4][signature] = (parent, parse)
-    # 3 - The null position of unobserved words that are referenced
-    if ref is not None:
-      mapping[3][signature] = (parent, parse, ref)
-
-  for subparse in parse.subtrees:
-    resolve_traces(subparse, mapping)
+  # 3 - list of parse nodes like (-NONE- [no num]), e.g. inner node of:
+  #        (WHNP (-NONE- *))
+  #        (WHADVP-1 (-NONE- 0))
+  if plabel == '-NONE-' and get_reference(node.word) is None:
+    mapping[3].append(node)
 
   return mapping
 
@@ -569,30 +575,30 @@ def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
   >>> from StringIO import StringIO
   >>> file_text = """# Parse  (ROOT
   ... # Parse   (S
-  ... # Parse     (NP-SBJ-1 (DT A) (NN record) (NN date))
+  ... # Parse     (NP-SBJ-1 (DT A) (NN record) (NN date) )
   ... # Parse     (VP (VBZ has) (RB n't)
   ... # Parse       (VP (VBN been)
   ... # Parse         (VP (VBN set)
-  ... # Parse           (NP (-NONE- *-1)))))
-  ... # Parse     (. .)))
-  ... # Sent  1 A  2 record  3 date  4 has  5 n't  6 been  7 set  8 .
-  ... # Trace 0 ((0, 3), 'NP-SBJ-1') ('1', (NP-SBJ-1 (DT A) (NN record) (NN date)))
-  ... # Trace 1 1 (-NONE- *-1) (7, 8)
-  ... # Graph type -   1ec graph
-  ... 1 DT _ | 3 NP-SBJ _ _
-  ... 2 NN _ | 3 NP-SBJ _ _
-  ... 3 NN NP-SBJ | 4 S * _ | 7 VP trace_* NP
-  ... 4 VBZ VP_S_ROOT | 0 ROOT normal _
-  ... 5 RB _ | 4 VP _ _
-  ... 6 VBN VP | 4 VP _ _
-  ... 7 VBN VP | 6 VP _ _
-  ... 8 . _ | 4 S _ _
+  ... # Parse           (NP (-NONE- *-1) ))))
+  ... # Parse     (. .) ))
+  ... # Sentence A record date has n't been set .
+  ... # Tokens 1 A  2 record  3 date  4 has  5 n't  6 been  7 set  8 .
+  ... # Identity 1 (0, 3) NP-SBJ-1 False
+  ... # Reference 1 (7, 7) *-1
+  ... # Graph type:  proj graph no-cycle no-cycle-alt no-cycle1 has-double
+  ... 1 A      DT  _                   3 NP-SBJ_0
+  ... 2 record NN  _                   3 NP-SBJ_0
+  ... 3 date   NN  NP-SBJ              7 S_0      7 NP_0 NP-SBJ_0 F *
+  ... 4 has    VBZ _                   7 VP_2
+  ... 5 n't    RB  _                   7 VP_2
+  ... 6 been   VBN _                   7 VP_1
+  ... 7 set    VBN (NP_(*))_VP_VP_VP_S 0 ROOT_0
+  ... 8 .      .   _                   7 S_0
   ... """
   >>> in_file = StringIO(file_text)
   >>> shp_read_tree(in_file)
   (ROOT (S (NP-SBJ-1 (DT A) (NN record) (NN date)) (VP (VBZ has) (RB n't) (VP (VBN been) (VP (VBN set) (NP (-NONE- *-1))))) (. .)))'''
   cur_text = []
-  is_empty = False
   while True:
     line = source.readline()
     if line == '':
@@ -605,13 +611,9 @@ def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
         continue
     if line[0] == '#':
       continue
-    elif '|' not in line:
-      is_empty = True
     assert line[0] in string.digits
     cur_text.append(line)
 
-  if is_empty:
-    return "Empty"
   tree = tree_from_shp(cur_text)
   ptb_cleaning(tree)
   return tree
@@ -700,6 +702,7 @@ def generate_trees(source, tree_reader=ptb_read_tree, max_sents=-1, return_empty
       continue
     if tree is None:
       return
+    tree.set_unique_id()
     yield tree
     count += 1
     if count >= max_sents > 0:

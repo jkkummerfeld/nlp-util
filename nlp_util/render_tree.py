@@ -4,6 +4,7 @@
 '''Various string representations of trees.'''
 
 import string
+from collections import defaultdict
 
 import pstree, parse_errors, head_finder, treebanks
 
@@ -33,27 +34,37 @@ def text_POS_tagged(tree, show_traces=False):
       text.append(node.word + '|' + node.label)
   return ' '.join(text)
 
-def text_tree(tree, single_line=True, show_traces=False, depth=0, dense=True, newline=True):
+def text_tree(tree, single_line=True, show_traces=False, depth=0, dense=True, newline=True, match_ptb=False, prev_and=False):
   if not show_traces:
     tree = treebanks.remove_traces(tree, False)
+    tree = treebanks.remove_coindexation(tree, False)
   ans = ''
   if not single_line and depth > 0:
-    if newline or (not dense) or tree.word is None:
-      ans = '\n' + depth * '\t'
+    if newline or (not dense) or tree.word is None or (match_ptb and (prev_and or tree.word in {'and', '-RRB-', '-RCB-', '-RSB-', '-LRB-', '-LCB-', '-LSB-'})):
+      if match_ptb:
+        if tree.parent is None or tree.parent.label != 'ROOT':
+          ans = '\n' + depth * '  '
+      else:
+        ans = '\n' + depth * '\t'
     else:
       ans = ' '
-  ans += '(' + tree.label
+  if match_ptb and tree.label == 'ROOT':
+    ans += "( "
+  else:
+    ans += '(' + tree.label
   if tree.word is not None:
     ans += ' ' + tree.word
     newline = True
   else:
     newline = False
+  prev_and = False
   for subtree in tree.subtrees:
     if single_line:
       ans += ' '
-    ans += text_tree(subtree, single_line, True, depth + 1, dense, newline)
+    ans += text_tree(subtree, single_line, True, depth + 1, dense, newline, match_ptb, prev_and)
+    prev_and = (subtree.word == 'and')
     newline = subtree.word is None
-  if tree.word is None and dense and tree.subtrees[-1].word is not None:
+  if tree.word is None and dense and tree.subtrees[-1].word is not None and ans[-1] != ' ':
     ans += ' '
   ans += ')'
   return ans
@@ -324,138 +335,89 @@ def label_level(parse, head_map, label=None):
         break
   return count
 
-def get_edges(parse, edges, spines, head_map, traces):
-  # Add spine
-  chead = head_finder.get_head(head_map, parse, True)
-  if parse.is_terminal() and not parse.is_trace():
+def compress_null_for_spine(parse, symbol_counts, symbol_map, traces):
+  if parse.is_terminal():
+    num = pstree.get_reference(parse.word)
+    if num is None:
+      return "("+ parse.word +")"
+    else:
+      child = treebanks.follow_chain_in_mapping(traces, num)
+      if child is None:
+        return None
+      return "(" + treebanks.remove_coindexation_from_label(parse.word) +")"
+
+  label = treebanks.remove_coindexation_from_label(parse.label)
+  num = symbol_counts[label]
+  symbol_counts[label] += 1
+  symbol_map[parse.unique_id] = "{}_{}".format(label, num)
+
+  parts = []
+  for node in parse.subtrees:
+    sub = compress_null_for_spine(node, symbol_counts, symbol_map, traces)
+    if sub is not None:
+      parts.append(sub)
+
+  if len(parts) > 0:
+    return "({}_{})".format(label, "_".join(parts))
+  else:
+    return None
+
+def get_spines(parse, head_map, spines, symbol_map, traces):
+  if not parse.is_terminal():
+    for subparse in parse.subtrees:
+      get_spines(subparse, head_map, spines, symbol_map, traces)
+  elif not parse.is_trace():
+    # Add spine, happens on the terminal that this spine will be assigned to
+    chead = head_finder.get_head(head_map, parse, True)
     chain = []
     cur = parse.parent
+    symbol_counts = defaultdict(lambda: 0)
+    trace_symbol_counts = defaultdict(lambda: 0)
+    # Walk up the parse via parent links, gradually building the spine
     while cur is not None and chead == head_finder.get_head(head_map, cur, True):
-      if cur.parent is not None:
-        chain.append(treebanks.remove_coindexation_from_label(cur.label))
-      signature = (cur.span, cur.label)
-      target, null_cur = None, None
-      if signature in traces[3]:
-        target, null_cur, onum = traces[3][signature]
-      if signature in traces[4]:
-        target, null_cur = traces[4][signature]
-      if target is not None:
-        null = [null_cur.word]
-        null_cur = null_cur.parent
-        while null_cur != target:
-          null.append(treebanks.remove_coindexation_from_label(null_cur.label))
-          null_cur = null_cur.parent
-        null.reverse()
-        chain[-1] += "({})".format("_".join(null))
+      if cur.parent is not None: # Avoid the case of the ROOT
+        chain.append('')
+        # Add null elements that need to live here.
+        # Most complex case:
+        # ( (S
+        #     (ADJP-TPC-1 (RB Not) (RB likely) )
+        #     (, ,)
+        #     (NP-SBJ (PRP I) )
+        #     (VP (VBP think)
+        #       (SBAR (-NONE- 0)
+        #         (S
+        #           (NP-SBJ (-NONE- *) )
+        #           (ADJP-PRD (-NONE- *T*-1) ))))
+        #     (. .) ))
+        for node in cur.subtrees:
+          if node.wordspan[0] == node.wordspan[1]:
+            to_add = compress_null_for_spine(node, trace_symbol_counts, symbol_map, traces)
+            if to_add is not None:
+              chain[-1] += to_add + "_"
+        # Add the non-terminal
+        label = treebanks.remove_coindexation_from_label(cur.label)
+        num = symbol_counts[label]
+        symbol_counts[label] += 1
+        symbol_map[cur.unique_id] = "{}_{}".format(label, num)
+        chain[-1] += label
       cur = cur.parent
     spines.append((parse.wordspan[1], parse.label, chain, parse.word))
 
-  # Add edges
+def get_edges(parse, edges, spines, head_map, symbol_map):
+  for subparse in parse.subtrees:
+    get_edges(subparse, edges, spines, head_map, symbol_map)
+
   if not parse.is_terminal():
-    # Normal edges
+    phead = head_finder.get_head(head_map, parse, True)
+    # Normal edges, added by looking at which subparses are not the head of this non-terminal
     for subparse in parse.subtrees:
-      shead = head_finder.get_head(head_map, subparse, True)
-      if shead is not None and chead is not None:
-        if shead[0] != chead[0]:
-          plabel = treebanks.remove_coindexation_from_label(parse.label)
-          clabel = treebanks.remove_coindexation_from_label(subparse.label)
-          plevel = label_level(parse, head_map)
-          clevel = label_level(subparse, head_map)
-          edges.append((shead[0][1], plabel + '_' + str(plevel), chead[0][1], clabel + "_" + str(clevel), "_"))
-
-    # Traces
-    signature = (parse.span, parse.label)
-
-    # A trace where both locations are NONE
-    if signature in traces[3]:
-      cparent, cparse, num = traces[3][signature]
-      chead = head_finder.get_head(head_map, parse, True)
-      clabel = treebanks.remove_coindexation_from_label(cparse.parent.label)
-      clevel = label_level(cparse.parent, head_map)
-      if num in traces[1]:
-        for subparse in traces[1][num]:
-          trace_type = clabel + '_' + str(clevel)
-          parent = subparse
-          while head_finder.get_head(head_map, parent, True) is None and parent.parent is not None:
-            parent = parent.parent
-          phead = head_finder.get_head(head_map, parent, True)
-          plabel = treebanks.remove_coindexation_from_label(parent.label)
-          ilabel = treebanks.remove_coindexation_from_label(subparse.parent.label)
-          ilabel += "_"+ '-'.join(subparse.word.split('-')[:-1])
-          level = label_level(parent, head_map)
-          edges.append((chead[0][1], plabel + '_' + str(level), phead[0][1], trace_type, ilabel))
-
-    # The realisation point of the trace (either with or without an observed word)
-    if signature in traces[0]:
-      num = traces[0][signature][0]
-      if num in traces[1]:
-        # If this is the middle of a chain of traces, follow the chain
-        thead = chead
-        tparse = parse
-        in_chain = False
-        working = True
-        while thead is None and working:
-          working = False
-          word = tparse.subtrees[0].word
-          if word is None:
-            # Ugh, these are messy cases, just find something to follow
-            for option in tparse.word_yield(None, True):
-              if '-' in option:
-                word = option
-          if '-' in word:
-            onum = word.split('-')[-1]
-            for signature in traces[0]:
-              if traces[0][signature][0] == onum:
-                tparse = traces[0][signature][1]
-                thead = head_finder.get_head(head_map, tparse, True)
-                working = True
-                in_chain = True
-
-        for subparse in traces[1][num]:
-          slabel = treebanks.remove_coindexation_from_label(tparse.label)
-          slevel = label_level(tparse, head_map)
-          trace_type = "{}_{}".format(slabel, slevel)
-          parent = subparse.parent # Attachment point
-          plabel = treebanks.remove_coindexation_from_label(parent.parent.label)
-          plevel = label_level(parent.parent, head_map)
-          null_wrap = treebanks.remove_coindexation_from_label(parent.label)
-          null_wrap += "_"+ '-'.join(subparse.word.split('-')[:-1])
-          if in_chain:
-            null_wrap += "_chain"
-          while head_finder.get_head(head_map, parent, True) is None and parent.parent is not None:
-            parent = parent.parent
-          phead = head_finder.get_head(head_map, parent, True)
-          if thead is not None:
-            edges.append((thead[0][1], plabel + '_' + str(plevel), phead[0][1], trace_type, null_wrap))
-          elif in_chain:
-            # Not handled by the null - null case above
-            tparse = tparse.parent
-            slevel = label_level(tparse, head_map, slabel)
-            thead = head_finder.get_head(head_map, tparse, True)
-            trace_type = "{}_{}".format(slabel, slevel)
-            if thead is not None:
-              edges.append((thead[0][1], plabel + '_' + str(plevel), phead[0][1], trace_type, null_wrap))
-
-      # For each (P-# ... ) add a link from all (P=# ... ) that match
-      if num in traces[2]:
-        phead = head_finder.get_head(head_map, parse, True)
-        for subparse in traces[2][num]:
-          shead = head_finder.get_head(head_map, subparse, True)
-          plabel = treebanks.remove_coindexation_from_label(parse.label)
-          clabel = treebanks.remove_coindexation_from_label(subparse.label)
-          plevel = label_level(parse, head_map)
-          clevel = label_level(subparse, head_map)
-          if phead is None:
-            phead = head_finder.get_head(head_map, parse.parent, True)
-            plabel = treebanks.remove_coindexation_from_label(parse.parent.label)
-            plevel = label_level(parse.parent, head_map)
-          if shead is None:
-            print "# Failed on = with (P=# (NONE))"
-          else:
-            edges.append((shead[0][1], plabel + '_' + str(plevel), phead[0][1], clabel + "_" + str(clevel), "="))
-
-    for subparse in parse.subtrees:
-      get_edges(subparse, edges, spines, head_map, traces)
+      chead = head_finder.get_head(head_map, subparse, True)
+      if phead is not None and chead is not None and phead[0] != chead[0]:
+        psym = symbol_map[parse.unique_id]
+        csym = subparse.label + "_0"
+        if not subparse.is_terminal():
+          cysm = symbol_map[subparse.unique_id]
+        edges.append((chead[0][1], csym, phead[0][1], psym, "_", False, False))
 
 def check_tree(edges):
   children = set()
@@ -497,14 +459,16 @@ def check_1ec(edges):
       print "# 1EC_violation", edge, edge_set
   return ans
 
-def check_cyclic(edges, len1=False):
+def check_cyclic(edges, len1=False, reverse_null=False):
   edge_sets = {}
   for edge in edges:
-    if edge[0] not in edge_sets:
-      edge_sets[edge[0]] = set()
-    if edge[2] not in edge_sets:
-      edge_sets[edge[2]] = set()
-    edge_sets[edge[0]].add(edge[2])
+    start = edge[0] if reverse_null and edge[5] else edge[2]
+    end = edge[2] if reverse_null and edge[5] else edge[0]
+    if start not in edge_sets:
+      edge_sets[start] = set()
+    if end not in edge_sets:
+      edge_sets[end] = set()
+    edge_sets[start].add(end)
 
   cycle = False
   for start in edge_sets:
@@ -537,53 +501,102 @@ def check_double_edge(edges):
   return False
 
 def shg_format(parse, head_rules):
+  # The format is:
+  #  Lines with a # are useful comments
+  #  Main lines are a series of space separated fields:
+  #    <token number>
+  #    <token>
+  #    <part of speech>
+  #    <spine>
+  #    <parent>
+  #    <structural parent label as Symbol_Number>
+  # {
+  #    <parent>
+  #    <parent label as Symbol_Number>
+  #    <child label as Symbol_Number>
+  #    T/F if the child is a null element or not
+  #    <trace symbol>
+  # }
+  #
+  # All numbers count from 0 upwards, starting from the bottom of the spine.
+  # Symbols for null elements are counted separately.
   parse.calculate_spans()
   traces = treebanks.resolve_traces(parse)
   base_parse = treebanks.remove_traces(parse, False)
   head_map = head_finder.find_heads(base_parse, head_rules)
-  edges = []
-###  for node in pstree.TreeIterator(parse):
-###    head = head_finder.get_head(head_map, node, True)
-###    print head, node.span, node.label, text_words(node)
+
+  ans = []
 
   # Prefix
-  ans = []
-  ans = ["# Parse  " + line for line in text_tree(parse, False, True).split("\n")]
+  ans += ["# Parse " + line for line in text_tree(parse, False, True).split("\n")]
   words = text_words(parse).split()
-  ans.append("# Sent")
-  for i, w in enumerate(words):
-    ans[-1] += "  {} {}".format(i + 1, w)
+  ans.append("# Sentence   "+ " ".join(words))
+  ans.append("# Tokens     "+ "  ".join(["{} {}".format(i + 1, w) for i, w in enumerate(words)]))
 
-  # Trace info (for debugging)
-  for i in range(6):
-    if i in [0, 3, 4]:
-      for signature in traces[i]:
-        ans.append("# Trace {} {} {}".format(i, signature, traces[i][signature]))
-    if i in [1, 2]:
-      for num in traces[i]:
-        for tparse in traces[i][num]:
-          ans.append("# Trace {} {} {} {}".format(i, num, tparse, tparse.span))
+  # Trace info
+  for num in traces[0]:
+    node, over_null = traces[0][num]
+    ans.append("# Identity   {} {} {} {}".format(num, node.wordspan, node.label, over_null))
+  for num in traces[1]:
+    for node in traces[1][num]:
+      ans.append("# Gapping    {} {} {}".format(num, node.wordspan, node.label))
+  for num in traces[2]:
+    for node in traces[2][num]:
+      ans.append("# Reference  {} {} {}".format(num, node.wordspan, node.word))
+  for node in traces[3]:
+    ans.append("# Empty      {} {}".format(node.wordspan, node.word))
 
-  edges = []
+  # Actual structure
+
+  # Spines
   spines = []
-  label = treebanks.remove_coindexation_from_label(parse.subtrees[0].label)
-  assert len(parse.subtrees) == 1
-  head = head_finder.get_head(head_map, parse, True)
-  level = label_level(parse.subtrees[0], head_map)
-  edges.append((head[0][1], "ROOT_0", 0, label + "_" + str(level), "_"))
+  symbol_map = {}
+  get_spines(parse, head_map, spines, symbol_map, traces)
 
-  get_edges(parse, edges, spines, head_map, traces)
+  # Regular Edges
+  edges = []
+  assert len(parse.subtrees) == 1
+  sym = symbol_map[parse.subtrees[0].unique_id]
+  head = head_finder.get_head(head_map, parse, True)
+  edges.append((head[0][1], sym, 0, "ROOT_0", "_", False, False))
+  get_edges(parse, edges, spines, head_map, symbol_map)
+
+  # Traces
+  for trace_group in [1, 2]:
+    for num in traces[trace_group]:
+      # Get the identity location, which will be the child for the edges
+      child = treebanks.follow_chain_in_mapping(traces, num, trace_group)
+      if child is None:
+        ans.append("# Error      {} reference without identity".format(num))
+        continue
+      csym = symbol_map[child.unique_id]
+      child_is_null = (child.wordspan[1] == child.wordspan[0])
+      while child.parent is not None and child.wordspan[1] == child.wordspan[0]:
+        child = child.parent
+      chead = head_finder.get_head(head_map, child, True)
+      # Consider each reference
+      for node in traces[trace_group][num]:
+        trace_type = "="
+        if trace_group == 2:
+          trace_type = treebanks.remove_coindexation_from_label(node.word)
+        parent = node
+        if trace_group == 2:
+          parent = parent.parent
+        psym = symbol_map[parent.unique_id]
+        # Get the head location
+        parent_is_null = (parent.wordspan[1] == parent.wordspan[0])
+        while parent.parent is not None and parent.wordspan[1] == parent.wordspan[0]:
+          parent = parent.parent
+        phead = head_finder.get_head(head_map, parent, True)
+        edges.append((chead[0][1], psym, phead[0][1], csym, trace_type, child_is_null, parent_is_null))
 
   # Graph properties
   nedges = []
   for edge in edges:
     a = int(edge[0])
     b = int(edge[2])
-    if a < b:
-      nedges.append((a, b))
-    else:
-      nedges.append((b, a))
-  graph_type = '# Graph type - '
+    nedges.append((min(a, b), max(a, b)))
+  graph_type = '# Graph type '
   if check_proj(nedges):
     graph_type += " proj"
   elif check_1ec(nedges):
@@ -591,30 +604,52 @@ def shg_format(parse, head_rules):
   else:
     graph_type += "other"
   graph_type += ' tree' if check_tree(edges) else ' graph'
-  graph_type += ' cyclic' if check_cyclic(edges) else ' no-cycle'
-  graph_type += ' self-cycle' if check_self_cycle(edges) else ' no-self-cycle'
-  graph_type += ' double-edge' if check_double_edge(edges) else ' no-double'
+  graph_type += ' has-cycle' if check_cyclic(edges) else ' no-cycle'
+  graph_type += ' has-cycle-alt' if check_cyclic(edges, False, True) else ' no-cycle-alt'
+  graph_type += ' has-cycle1' if check_self_cycle(edges) else ' no-cycle1'
+  graph_type += ' has-double' if check_double_edge(edges) else ' no-double'
   ans.append(graph_type)
 
   # Spines and edges
   spines.sort()
+  final_structure = []
   for spine in spines:
     word, POS, chain, token = spine
     chain = '_'.join(chain) if len(chain) > 0 else '_'
-    line = "{} {} {} {}".format(word, token, POS, chain)
+    line = [str(word), token, POS, chain]
     to_add = []
     for edge in edges:
       if edge[0] == word:
-        parent = edge[2]
         label = edge[1]
+        parent = edge[2]
         etype = edge[3]
         trace_info = edge[4]
-        part = " | {} {} {} {}".format(parent, label, etype, trace_info)
+        child_is_null = str(edge[5])[0]
+        parent_is_null = str(edge[6])[0]
         if trace_info == '_':
-          to_add.insert(0, part)
+          line.append(str(parent))
+          line.append(etype)
         else:
+          part = "{} {} {} {} {} {}".format(parent, label, parent_is_null, etype, child_is_null, trace_info)
           to_add.append(part)
-    ans.append(line + ''.join(to_add))
+    to_add.sort()
+    final_structure.append(line + to_add)
+  max_lengths = defaultdict(lambda: 0)
+  for line in final_structure:
+    for i, text in enumerate(line):
+      max_lengths[i] = max(max_lengths[i], len(text))
+  for line in final_structure:
+    padded = []
+    for i, text in enumerate(line):
+      if i < 6:
+        if i == 0 or i == 4:
+          fmt = "{:>"+ str(max_lengths[i]) +"}"
+        else:
+          fmt = "{:<"+ str(max_lengths[i]) +"}"
+        padded.append(fmt.format(text))
+      else:
+        padded.append(text)
+    ans.append(' '.join(padded))
   ans.append('')
   return "\n".join(ans)
 
