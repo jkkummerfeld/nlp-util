@@ -60,8 +60,8 @@ if __name__ == '__main__':
     print "Read trees from stdin and print them to stdout."
     print "Options:"
     print "  -(i)nput = (p)enn treebank | (c)onll | split (h)ead"
-    print "  -(o)utput = (s)ingle_line [with (t)races] | (m)ulti_line [with (t)races] | (o)riginal ptb | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | split (h)ead | (d)ependencies"
-    print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries, right (b)inarise coordination, cc(k)-style binarise coordination, remove (e)xtra coordination nodes, (j)kk-style coordination"
+    print "  -(o)utput = (s)ingle_line [with (t)races] | (m)ulti_line [with (t)races] | (o)riginal ptb | (t)ex | (w)ords | (o)ntonotes | (p)os tagged | split (h)ead [with (r)everesed null-null] | (d)ependencies"
+    print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries, right (b)inarise coordination, cc(k)-style binarise coordination, remove (e)xtra coordination nodes, (j)kk-style coordination, redirect (g)apping"
     print "  -(g)old = <gold filenmae> (can be used by the tex output)"
     print "  -(l)ength = number (will leave out sentences longer than this)"
     print "  -(h)ead rules = (c)ollins | (p)ennconverter | (t)iger | (j)kk"
@@ -140,6 +140,11 @@ if __name__ == '__main__':
       treebanks.apply_collins_rules(tree)
       if gold_tree is not None:
         treebanks.apply_collins_rules(gold_tree)
+    if 'g' in edits:
+      treebanks.redirect_gapping(tree)
+      if gold_tree is not None:
+        treebanks.redirect_gapping(gold_tree)
+    # These are intentionally last - could muck with above changes
     if 'e' in edits:
       filter_func = lambda t: len(t.label) > 2 and t.label.startswith('CC')
       treebanks.remove_nodes(tree, filter_func, True, True)
@@ -183,6 +188,8 @@ if __name__ == '__main__':
         print render_tree.text_POS_tagged(tree)
       elif out_format == 'h':
         print render_tree.shg_format(tree, head_rules)
+      elif out_format == 'hr':
+        print render_tree.shg_format(tree, head_rules, True)
       elif out_format == 'd':
         print >> sys.stderr, "Not implemented yet"
       elif out_format == 't':

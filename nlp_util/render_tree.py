@@ -341,7 +341,7 @@ def compress_null_for_spine(parse, symbol_counts, symbol_map, traces):
     if num is None:
       return "("+ parse.word +")"
     else:
-      child = treebanks.follow_chain_in_mapping(traces, num)
+      chained, child = treebanks.follow_chain_in_mapping(traces, num)
       if child is None:
         return None
       return "(" + treebanks.remove_coindexation_from_label(parse.word) +")"
@@ -500,7 +500,7 @@ def check_double_edge(edges):
     edge_set.add(edge)
   return False
 
-def shg_format(parse, head_rules):
+def shg_format(parse, head_rules, reverse_null_null=False):
   # The format is:
   #  Lines with a # are useful comments
   #  Main lines are a series of space separated fields:
@@ -565,7 +565,7 @@ def shg_format(parse, head_rules):
   for trace_group in [1, 2]:
     for num in traces[trace_group]:
       # Get the identity location, which will be the child for the edges
-      child = treebanks.follow_chain_in_mapping(traces, num, trace_group)
+      chained, child = treebanks.follow_chain_in_mapping(traces, num, trace_group)
       if child is None:
         ans.append("# Error      {} reference without identity".format(num))
         continue
@@ -579,6 +579,8 @@ def shg_format(parse, head_rules):
         trace_type = "="
         if trace_group == 2:
           trace_type = treebanks.remove_coindexation_from_label(node.word)
+        if chained:
+          trace_type += "_chain"
         parent = node
         if trace_group == 2:
           parent = parent.parent
@@ -588,7 +590,7 @@ def shg_format(parse, head_rules):
         while parent.parent is not None and parent.wordspan[1] == parent.wordspan[0]:
           parent = parent.parent
         phead = head_finder.get_head(head_map, parent, True)
-        edges.append((chead[0][1], psym, phead[0][1], csym, trace_type, child_is_null, parent_is_null))
+        edges.append((chead[0][1], csym, phead[0][1], psym, trace_type, child_is_null, parent_is_null))
 
   # Graph properties
   nedges = []
@@ -619,18 +621,23 @@ def shg_format(parse, head_rules):
     line = [str(word), token, POS, chain]
     to_add = []
     for edge in edges:
-      if edge[0] == word:
-        label = edge[1]
-        parent = edge[2]
-        etype = edge[3]
-        trace_info = edge[4]
-        child_is_null = str(edge[5])[0]
-        parent_is_null = str(edge[6])[0]
+      clabel = edge[1]
+      parent = edge[2]
+      plabel = edge[3]
+      trace_info = edge[4]
+      child_is_null = str(edge[5])[0]
+      parent_is_null = str(edge[6])[0]
+
+      if trace_info == '=' or (reverse_null_null and edge[5] and edge[6]):
+        if edge[2] == word:
+          part = "{} {} {} {} {} {}".format(edge[0], clabel, child_is_null, plabel, parent_is_null, trace_info)
+          to_add.append(part)
+      elif edge[0] == word:
         if trace_info == '_':
           line.append(str(parent))
-          line.append(etype)
+          line.append(plabel)
         else:
-          part = "{} {} {} {} {} {}".format(parent, label, parent_is_null, etype, child_is_null, trace_info)
+          part = "{} {} {} {} {} {}".format(parent, plabel, parent_is_null, clabel, child_is_null, trace_info)
           to_add.append(part)
     to_add.sort()
     final_structure.append(line + to_add)

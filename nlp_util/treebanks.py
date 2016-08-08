@@ -300,10 +300,40 @@ def binarise_coordination(parse, method, in_place=True):
   else:
     raise Exception
 
+def redirect_gapping(parse):
+  traces = resolve_traces(parse)
+  next_num = 1
+  for num in traces[0]:
+    if int(num) >= next_num:
+      next_num = int(num) + 1
+
+  for num in traces[1]:
+    # Change the goal
+    target, over_null = traces[0][num]
+    if num not in traces[2]:
+      target.label = ''.join(target.label.split('-{}'.format(num)))
+
+    ntarget = target.parent
+    new_num = get_reference(ntarget.label)
+    if new_num is None:
+      if num in traces[2]:
+        new_num = next_num
+        next_num += 1
+      else:
+        new_num = num
+      ntarget.label += "-{}".format(new_num)
+
+    if new_num != num:
+      for node in traces[1][num]:
+        # Change all to point to new location
+        core = ''.join(node.label.split('={}'.format(num)))
+        node.label = core + "={}".format(new_num)
+
 def follow_chain_in_mapping(mapping, num, trace_group=2):
   if num not in mapping[0]:
     return None
   ref = mapping[0][num]
+  chained = False
   if trace_group == 2:
     while ref[1]:
       ref_num = None
@@ -315,7 +345,8 @@ def follow_chain_in_mapping(mapping, num, trace_group=2):
       if ref_num is None or ref_num not in mapping[0]:
         break
       ref = mapping[0][ref_num]
-  return ref[0]
+      chained = True
+  return (chained, ref[0])
 
 def resolve_traces(node, mapping=None):
   if mapping is None:
