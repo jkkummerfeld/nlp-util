@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# vim: set ts=2 sw=2 noet:
+
+from collections import defaultdict
 
 import pstree
 
@@ -15,10 +15,15 @@ class Parse_Error_Set:
 		if gold is not None and test is not None:
 			errors = get_errors(test, gold, include_terminals)
 			for error in errors:
-				self.add_error(error[0], error[1], error[2], error[3])
+				if len(error) > 4:
+					self.add_error(error[0], error[1], error[2], error[3], error[4])
+				else:
+					self.add_error(error[0], error[1], error[2], error[3])
 	
-	def add_error(self, etype, span, label, node):
+	def add_error(self, etype, span, label, node, gold_label=None):
 		error = (etype, span, label, node)
+		if gold_label is not None:
+			error = (etype, span, label, node, gold_label)
 		if span not in self.spans:
 			self.spans[span] = {}
 		if label not in self.spans[span]:
@@ -47,68 +52,55 @@ class Parse_Error_Set:
 def get_errors(test, gold, include_terminals=False):
 	ans = []
 
-	# Different POS
-	if include_terminals:
-		for tnode in test:
-			if tnode.word is not None:
-				for gnode in gold:
-					if gnode.word is not None and gnode.span == tnode.span:
-						if gnode.label != tnode.label:
-							ans.append(('diff POS', tnode.span, tnode.label, tnode, gnode.label))
-
-	test_spans = [(span.span[0], span.span[1], span) for span in test]
-	test_spans.sort()
-	test_span_set = {}
-	to_remove = []
-	for span in test_spans:
-		if span[2].is_terminal():
-			to_remove.append(span)
+	gold_spans = []
+	gold_POS = {}
+	gold_span_set = defaultdict(lambda: 0)
+	for span in gold:
+		if span.is_terminal():
+			if include_terminals:
+				gold_POS[span.span] = span.label
 			continue
-		key = (span[0], span[1], span[2].label) 
-		if key not in test_span_set:
-			test_span_set[key] = 0
-		test_span_set[key] += 1
-	for span in to_remove:
-		test_spans.remove(span)
-
-	gold_spans = [(span.span[0], span.span[1], span) for span in gold]
-	gold_spans.sort()
-	gold_span_set = {}
-	to_remove = []
-	for span in gold_spans:
-		if span[2].is_terminal():
-			to_remove.append(span)
-			continue
-		key = (span[0], span[1], span[2].label) 
-		if key not in gold_span_set:
-			gold_span_set[key] = 0
+		key = (span.span[0], span.span[1], span.label)
 		gold_span_set[key] += 1
-	for span in to_remove:
-		gold_spans.remove(span)
+		gold_spans.append((key, span))
+
+	test_spans = []
+	test_span_set = defaultdict(lambda: 0)
+	for span in test:
+		if span.is_terminal():
+			if include_terminals:
+				tnode = span
+				gold_label = gold_POS[tnode.span]
+				if gold_label != tnode.label:
+					ans.append(('diff POS', tnode.span, tnode.label, tnode, gold_label))
+			continue
+		key = (span.span[0], span.span[1], span.label)
+		test_span_set[key] += 1
+		test_spans.append((key, span))
 
 	# Extra
-	for span in test_spans:
-		key = (span[0], span[1], span[2].label)
-		if key in gold_span_set and gold_span_set[key] > 0:
-			gold_span_set[key] -= 1
+	for key, span in test_spans:
+		count = gold_span_set.get(key)
+		if count is None or count == 0:
+			ans.append(('extra', span.span, span.label, span))
 		else:
-			ans.append(('extra', span[2].span, span[2].label, span[2]))
+			gold_span_set[key] -= 1
 
 	# Missing and crossing
-	for span in gold_spans:
-		key = (span[0], span[1], span[2].label)
-		if key in test_span_set and test_span_set[key] > 0:
-			test_span_set[key] -= 1
-		else:
+	for key, span in gold_spans:
+		count = test_span_set.get(key)
+		if count is None or count == 0:
 			name = 'missing'
-			for tspan in test_span_set:
-				if tspan[0] < span[0] < tspan[1] < span[1]:
+			for tkey, tspan in test_spans:
+				if tkey[0] < key[0] < tkey[1] < key[1]:
 					name = 'crossing'
 					break
-				if span[0] < tspan[0] < span[1] < tspan[1]:
+				elif key[0] < tkey[0] < key[1] < tkey[1]:
 					name = 'crossing'
 					break
-			ans.append((name, span[2].span, span[2].label, span[2]))
+			ans.append((name, span.span, span.label, span))
+		else:
+			test_span_set[key] -= 1
 	return ans
 
 def counts_for_prf(test, gold, include_root=False, include_terminals=False):

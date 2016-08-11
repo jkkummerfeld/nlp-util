@@ -3,7 +3,6 @@
 # vim: set ts=2 sw=2 noet:
 
 import sys
-###from .. import pstree, treebanks, render_tree
 from nlp_util import pstree, treebanks, render_tree
 
 #TODO Add the ability to print multiple outputs in a single run, to dfferent files
@@ -15,6 +14,10 @@ tex_start = '''\\documentclass[11pt]{article}
 \\usepackage{multirow}
 \\usepackage{graphicx}
 \\usepackage[landscape, top=0.2cm, bottom=0.2cm, left=0.2cm, right=0.2cm]{geometry}
+%\setlength{\\paperheight}{50cm}
+%\setlength{\\textheight}{49cm}
+%\setlength{\\paperwidth}{20cm}
+%\setlength{\\textwidth}{19cm}
 \\usepackage{enumerate}
 \\usepackage{multirow}
 \\usepackage{synttree}
@@ -34,7 +37,7 @@ tex_start = '''\\documentclass[11pt]{article}
 \\date{}
 
 \\begin{document}
-\\maketitle'''
+%%%\\maketitle'''
 
 def get_args():
 	args = {}
@@ -60,7 +63,7 @@ if __name__ == '__main__':
 		print "  -(o)utput = (s)ingle_line | (m)ulti_line | (t)ex | (w)ords | (o)ntonotes | (p)os tagged"
 		print "  -(e)dit = remove (t)races, remove (f)unction tags, apply (c)ollins rules, (h)omogenise top, remove trivial (u)naries"
 		print "  -(g)old = <gold filenmae>"
-		print "\ne.g. %s -f t -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
+		print "\ne.g. %s -o s -e tf -g trees_gold < trees_in > trees_out" % sys.argv[0]
 		sys.exit(0)
 
 	args = get_args()
@@ -117,17 +120,17 @@ if __name__ == '__main__':
 			if gold_tree is None:
 				print '\\scalebox{\\derivscale}{'
 				print render_tree.tex_synttree(tree)
-				print '}\n\\small\n\\pagebreak'
+				print '}\n\n\\small\n%%%\\pagebreak'
 			else:
 				# TODO: Add a flag to allow choosing to print only the error region
 				print '\\scalebox{\\derivscale}{'
 				other_spans = gold_tree.span_dict()
 				print render_tree.tex_synttree(tree, other_spans)
-				print '}\n\\small\n\\pagebreak'
+				print '}\n\n\\small\n%%%\\pagebreak'
 				print '\\scalebox{\\derivscale}{'
 				other_spans = tree.span_dict()
 				print render_tree.tex_synttree(gold_tree, other_spans)
-				print '}\n\\small\n\\pagebreak'
+				print '}\n\n\\small\n\\pagebreak'
 		elif out_format == 'w':
 			print render_tree.text_words(tree)
 	if out_format == 't':

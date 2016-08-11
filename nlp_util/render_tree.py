@@ -113,6 +113,7 @@ def tex_synttree(tree, other_spans=None, depth=0, compressed=True, span=None):
 		word = ''.join(word.split('.'))
 		word = '\&'.join(word.split('&'))
 		word = '\$'.join(word.split('$'))
+		word = '\%'.join(word.split('%'))
 
 	# Make the text
 	ans = ''
@@ -147,7 +148,152 @@ def tex_synttree(tree, other_spans=None, depth=0, compressed=True, span=None):
 		ans += '[%s [.t %s]]' % (label, words)
 	return ans
 
-def text_coloured_errors(tree, gold=None, depth=0, single_line=False, missing=None, extra=None, compressed=True, POS=True):
+### Sketch of new coloured error design:
+### 1. Create tokens for current tree, label each with its span, and whether it
+###    is extra (or different in the case of POS)
+### 2. Introduce missing brackets, placing them in the token list as
+###    appropriate
+### 3. Introduce crossing brackets, similarly
+def get_init_tokens(tree, mapping, tokens):
+	tokens.append(('(' + tree.label, tree.span, False, False, False, False))
+	mapping[tree] = [len(tokens) - 1]
+	for subtree in tree.subtrees:
+		get_init_tokens(subtree, mapping, tokens)
+	if tree.is_terminal():
+		tokens.append((' ' + tree.word + ')', tree.span, False, False, False, False))
+	else:
+		tokens.append((')', tree.span, False, False, False, False))
+	mapping[tree].append(len(tokens) - 1)
+	return tokens
+
+def text_coloured_errors(tree, gold=None, unused=0, single_line=False, unused2=None, unused3=None, compressed='words', POS=True, indent='   '):
+	# TODO: Work on ordering of unaries, particularly at the root
+	if compressed == True:
+		compressed = 'words'
+	start_missing = "\033[01;36m"
+	start_extra = "\033[01;31m"
+	start_crossing = "\033[01;33m"
+	end_colour = "\033[00m"
+
+	mapping = {}
+	tokens = []
+	get_init_tokens(tree, mapping, tokens)
+
+	# Mark extra
+	errors = parse_errors.Parse_Error_Set(gold, tree, POS)
+	for etype, span, label, node in errors.extra:
+		for token_loc in mapping[node]:
+			cur = tokens[token_loc]
+			tokens[token_loc] = (cur[0], cur[1], True, False, False, False)
+
+	# Mark POS
+	for etype, span, label, node, gold_label in errors.POS:
+		token_loc = mapping[node][0]
+		cur = tokens[token_loc]
+		ntext = '(' + start_missing + gold_label + ' ' + start_extra + label + end_colour
+		tokens[token_loc] = (ntext, cur[1], False, False, False, True)
+
+	# Insert missing
+	for etype, span, label, node in errors.missing:
+		for i in range(len(tokens)):
+			if tokens[i][1][0] == span[0] and tokens[i][1][1] <= span[1]:
+				tokens.insert(i, ('(' + label, span, False, True, False, False))
+				break
+		last = None
+		for i in range(len(tokens)):
+			if tokens[i][1][1] == span[1] and tokens[i][1][0] >= span[0]:
+				last = i
+		assert last is not None
+		tokens.insert(last + 1, (')', span, False, True, False, False))
+
+	# Insert crossing
+	for etype, span, label, node in errors.crossing:
+		for i in range(len(tokens)):
+			if tokens[i][1][0] == span[0] and tokens[i][1][1] <= span[1]:
+				tokens.insert(i, ('(' + label + ' ', span, False, False, True, False))
+				break
+		last = None
+		for i in range(len(tokens)):
+			if tokens[i][1][1] == span[1] and tokens[i][1][0] >= span[0]:
+				last = i
+		assert last is not None
+		tokens.insert(last + 1, (' ' + label + ')', span, False, False, True, False))
+
+	# Compressed
+	if compressed == 'none':
+		pass
+	else:
+		i = 0
+		while i < len(tokens):
+			if '(' in tokens[i][0] and not (tokens[i][2] or tokens[i][3] or tokens[i][4] or tokens[i][5]):
+				all_correct = True
+				depth = 0
+				last = None
+				for j in range(i, len(tokens)):
+					if tokens[j][2] or tokens[j][3] or tokens[j][4] or tokens[j][5]:
+						all_correct = False
+						break
+					if '(' in tokens[j][0]:
+						depth += 1
+					if ')' in tokens[j][0]:
+						depth -= 1
+					if depth == 0:
+						last = j
+						break
+				if all_correct:
+					assert last is not None
+					text = ''
+					if compressed == 'words':
+						top_label = ''
+						words = []
+						for token in tokens[i:last + 1]:
+							if '(' in token[0] and top_label == '':
+								top_label = token[0][1:]
+							elif ')' in token[0] and len(token[0]) > 1:
+								words.append(token[0].strip()[:-1])
+						text = '(' + top_label + ' ' + ' '.join(words) + ')'
+					elif compressed == 'single line':
+						for token in tokens[i:last + 1]:
+							if '(' in token[0]:
+								text += ' '
+							text += token[0]
+						text = text.strip()
+					tokens[i] = (text, tokens[i][1], False, False, False, False)
+					for j in range(i+1, last+1):
+						tokens.pop(i+1)
+			i += 1
+
+	# Combine tokens
+	ans = []
+	depth = 0
+	no_indent = False
+	for text, span, extra, missing, crossing, POS_error in tokens:
+		begin = ''
+		if '(' in text:
+			if crossing:
+				if not no_indent:
+					no_indent = True
+					begin = '\n' + depth * indent
+					depth += 1
+			else:
+				if not no_indent:
+					begin = '\n' + depth * indent
+					depth += 1
+				else:
+					no_indent = False
+		if ')' in text and not crossing:
+			depth -= 1
+		if extra:
+			ans.append(begin + start_extra + text + end_colour)
+		elif missing:
+			ans.append(begin + start_missing + text + end_colour)
+		elif crossing:
+			ans.append(begin + start_crossing + text + end_colour)
+		else:
+			ans.append(begin + text)
+	return ''.join(ans)
+
+def text_coloured_errors_old(tree, gold=None, depth=0, single_line=False, missing=None, extra=None, compressed=True, POS=True):
 	'''Pretty print, with errors marked using colour.
 	
 	'missing' should contain tuples (or be None):
@@ -162,8 +308,6 @@ def text_coloured_errors(tree, gold=None, depth=0, single_line=False, missing=No
 			return "Error - no gold tree and no missing list for colour repr"
 		# look at gold and work out what missing should be
 		errors = parse_errors.get_errors(tree, gold, POS)
-###		for error in errors:
-###			ans += '%s (%d, %d) %s\n' % (error[0], error[1][0], error[1][1], error[2])
 		extra = [e[3] for e in errors if e[0] == 'extra' and e[3].word is None]
 		extra = set(extra)
 		missing = [(e[1][0], e[1][1], e[2], False) for e in errors if e[0] == 'missing' and e[3].word is None]

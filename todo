@@ -1,0 +1,14 @@
+Look into plac: https://code.google.com/p/plac/
+
+Look into better packagaing and distribution with 'distribute'
+
+Use subprocess for parallelisation
+
+Unicode throughout
+ decode on read
+ encode pre write
+
+Make this possible:
+for tree in nlp_util.read_trees(filename):
+Currently:
+for tree in nlp_util.treebanks.read_trees("filename"):

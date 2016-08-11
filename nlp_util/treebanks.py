@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# vim: set ts=2 sw=2 noet:
 
 from pstree import *
 
@@ -91,17 +89,21 @@ def remove_trivial_unaries(tree, in_place=True):
 			subtree.parent = tree
 	return tree
 
-def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init_call=True):
+def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init_call=True, left=-1):
 	if filter_func(tree) and not preserve_subtrees:
 		return None
+	if left == -1:
+		left = tree.span[0]
+	oleft = left
 	subtrees = []
 	for subtree in tree.subtrees:
-		ans = remove_nodes(subtree, filter_func, in_place, preserve_subtrees, False)
+		ans = remove_nodes(subtree, filter_func, in_place, preserve_subtrees, False, left)
 		if ans is not None:
 			if type(ans) == type([]):
 				subtrees += ans
 			else:
 				subtrees.append(ans)
+			left = subtrees[-1].span[1]
 	if len(subtrees) == 0 and (not tree.is_terminal()):
 		return None
 	if filter_func(tree) and preserve_subtrees:
@@ -112,6 +114,9 @@ def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init
 			subtree.parent = tree
 	else:
 		tree = PSTree(tree.word, tree.label, tree.span, None, subtrees)
+	if tree.is_terminal():
+		left += 1
+	tree.span = (oleft, left)
 	return tree
 
 def remove_traces(tree, in_place=True):
@@ -327,7 +332,7 @@ def conll_read_tree(source, return_empty=False, allow_empty_labels=False, allow_
 		word = line[3]
 		pos = line[4]
 		tree = line[5]
-		tree = tree.split('*')
+		tree = ' '.join(tree.split('_')).split('*')
 		text += '%s(%s %s)%s' % (tree[0], pos, word, tree[1])
 	return tree_from_text(text)
 

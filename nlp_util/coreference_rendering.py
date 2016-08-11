@@ -120,8 +120,8 @@ def match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clu
 
 def print_conll_style_part(out, text, mentions, doc, part):
 	doc_str = doc
-	if "tc/ch/00/ch" in doc and '9' not in doc:
-		val = int(doc.split('_')[-1]) * 10 - 1
+	if "tc/ch/00/ch" in doc_str and '9' not in doc_str:
+		val = int(doc_str.split('_')[-1]) * 10 - 1
 		doc_str = "tc/ch/00/ch_%04d" % val
 	print >> out, "#begin document (%s); part %s" % (doc_str, part)
 	starts = defaultdict(lambda: [])
@@ -157,9 +157,16 @@ def print_conll_style_part(out, text, mentions, doc, part):
 	print >> out, "#end document"
 
 def print_conll_style(data, gold, out):
+	# Define an order
+	order = []
 	for doc in data:
 		for part in data[doc]:
-			print_conll_style_part(out, gold[doc][part]['text'], data[doc][part]['mentions'], doc, part)
+			order.append((doc, part))
+	order.sort()
+
+	# Work out the errors
+	for doc, part in order:
+		print_conll_style_part(out, gold[doc][part]['text'], data[doc][part]['mentions'], doc, part)
 
 def mention_text(text, mention, parses=None, heads=None, colour=None):
 	sentence, start, end = mention
@@ -253,6 +260,11 @@ def print_mention(out, with_context, gold_parses, gold_heads, text, mention, col
 		print >> out, to_print
 
 def print_cluster_errors(groups, out_errors, out_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions):
+	'''Mentions are printed to show both system and gold clusters:
+ - Mentions are placed in groups that correspond to the system cluster
+ - Colour is used to indicate the gold clusters, with red indicating spurious mentions
+For each mention the tuple of numbers indicates (sentence, start word, end word
++ 1).  Colours reset after each dsahed line.'''
 	mixed_groups = []
 	for i in xrange(len(groups)):
 		auto, gold = groups[i]
@@ -364,6 +376,8 @@ def print_cluster_error_group(group, out, text, gold_parses, gold_heads, gold_me
 	return colour_map
 
 def print_cluster_missing(out_errors, out_context, out, text, gold_cluster_set, covered, gold_parses, gold_heads):
+	'''Clusters that consist entirely of mentions that are not present in the
+system output.'''
 	print >> out_errors, "Missing:"
 	print >> out_context, "Missing:"
 	for entity in gold_cluster_set:
@@ -386,6 +400,8 @@ def print_cluster_missing(out_errors, out_context, out, text, gold_cluster_set, 
 			print >> out
 
 def print_cluster_extra(out_errors, out_context, out, text, auto_cluster_set, covered, gold_parses, gold_heads):
+	'''Clusters that consist entirely of mentions that are not present in the
+gold standard.'''
 	print >> out_errors, "Extra:"
 	print >> out_context, "Extra:"
 	for entity in auto_cluster_set:
@@ -411,7 +427,14 @@ def print_cluster_extra(out_errors, out_context, out, text, auto_cluster_set, co
 	print >> out_errors
 	print >> out_context
 
-def print_mention_list(out, gold_mentions, auto_mention_set):
+def print_mention_list(out, gold_mentions, auto_mention_set, gold_parses, gold_heads, text):
+	'''Mentions in each document:
+ - Mentions that occur in both gold and system output are white
+ - Mentions that appear only in the gold are blue
+ - Mentions that appear only in the system output are red
+For each mention the tuple of numbers indicates (sentence, start word, end word
++ 1), and the underlined word is the head of the mention (determined from the
+gold parse tree).'''
 	mentions = [(m, True) for m in gold_mentions]
 	for mention in auto_mention_set:
 		if mention not in gold_mentions:
@@ -426,11 +449,12 @@ def print_mention_list(out, gold_mentions, auto_mention_set):
 			print_mention(out, False, gold_parses, gold_heads, text, mention[0])
 
 def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_heads, text):
-	'''# Text is printed with both system and gold mentions marked:
-#  - Gold mentions are marked with '[ ... ]'
-#  - System mentions are marked with '( ... )'
-#  - Mentions that occur in both are marked with '{ ... }'
-# Colour is used to indicate missing and extra mentions.  Blue for missing, red for extra, and purple where they overlap.'''
+	'''Document text with both system and gold mentions marked:
+ - Gold mentions are marked with '[ ... ]'
+ - System mentions are marked with '( ... )'
+ - Mentions that occur in both are marked with '{ ... }'
+Colour is used to indicate missing and extra mentions.  Blue for missing, red
+for extra, and purple where they overlap.'''
 
 	mentions_by_sentence = defaultdict(lambda: [[], []])
 	for mention in gold_mentions:
@@ -558,65 +582,6 @@ def print_mention_text(out, gold_mentions, auto_mention_set, gold_parses, gold_h
 		print >> out, ' '.join(output) + '\n'
 		sentence += 1
 
-if __name__ == '__main__':
-	init.argcheck(sys.argv, 4, 5, "Print coreference resolution errors", "<prefix> <gold_dir> <test> [resolve span errors first? T | F]")
-
-	auto = coreference_reading.read_conll_coref_system_output(sys.argv[3])
-	gold = coreference_reading.read_conll_matching_files(auto, sys.argv[2])
-
-	out_cluster_errors = open(sys.argv[1] + '.cluster_errors', 'w')
-	out_cluster_context = open(sys.argv[1] + '.cluster_context', 'w')
-	out_cluster_missing = open(sys.argv[1] + '.cluster_missing', 'w')
-	out_cluster_extra = open(sys.argv[1] + '.cluster_extra', 'w')
-	out_mention_list = open(sys.argv[1] + '.mention_list', 'w')
-	out_mention_text = open(sys.argv[1] + '.mention_text', 'w')
-	out_files = [out_cluster_errors, 
-	             out_cluster_context,
-	             out_cluster_missing,
-	             out_cluster_extra,
-	             out_mention_list, 
-	             out_mention_text]
-	init.header(sys.argv, out_files)
-
-	print >> out_mention_text, print_mention_text.__doc__
-
-	for doc in auto:
-		for part in auto[doc]:
-			# Setup
-			for out in out_files:
-				print >> out, "\n# %s %s\n" % (doc, part)
-
-			text = gold[doc][part]['text']
-
-			gold_parses = gold[doc][part]['parses']
-			gold_heads = gold[doc][part]['heads']
-			gold_mentions = gold[doc][part]['mentions']
-			gold_clusters = gold[doc][part]['clusters']
-
-			auto_mentions = auto[doc][part]['mentions']
-			auto_clusters = auto[doc][part]['clusters']
-	
-			gold_cluster_set = coreference.set_of_clusters(gold_clusters)
-			auto_cluster_set = coreference.set_of_clusters(auto_clusters)
-			gold_mention_set = coreference.set_of_mentions(gold_clusters)
-			auto_mention_set = coreference.set_of_mentions(auto_clusters)
-
-			if len(sys.argv) > 4 and sys.argv[4] == 'T':
-				match_boundaries(gold_mention_set, auto_mention_set, auto_mentions, auto_clusters, auto_cluster_set, text, gold_parses, gold_heads)
-			
-			# Coloured mention output
-			print_mention_list(out_mention_list, gold_mentions, auto_mention_set)
-			print_mention_text(out_mention_text, gold_mentions, auto_mention_set, gold_parses, gold_heads, text)
-
-			# Coloured cluster output, grouped
-			groups = coreference.confusion_groups(gold_mentions, auto_mentions, gold_clusters, auto_clusters)
-
-			covered = print_cluster_errors(groups, out_cluster_errors, out_cluster_context, text, gold_parses, gold_heads, auto_clusters, gold_clusters, gold_mentions)
-			print >> out_cluster_errors, "Entirely missing or extra\n"
-			print >> out_cluster_context, "Entirely missing or extra\n"
-			print_cluster_missing(out_cluster_errors, out_cluster_context, out_cluster_missing, text, gold_cluster_set, covered, gold_parses, gold_heads)
-			print_cluster_extra(out_cluster_errors, out_cluster_context, out_cluster_extra, text, auto_cluster_set, covered, gold_parses, gold_heads)
-			
 ###if __name__ == "__main__":
 ###	print "Running doctest"
 ###	import doctest

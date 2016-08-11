@@ -100,8 +100,12 @@ if __name__ == '__main__':
 			continue
 
 		gold_complete_tree = pstree.tree_from_text(gold_text)
-		treebanks.ptb_cleaning(gold_complete_tree)
-		gold_tree = treebanks.apply_collins_rules(gold_complete_tree, False)
+		tree = treebanks.homogenise_tree(gold_complete_tree, False)
+		treebanks.remove_traces(tree)
+		treebanks.remove_function_tags(tree)
+		treebanks.ptb_cleaning(tree)
+		treebanks.remove_trivial_unaries(tree)
+		gold_tree = tree
 		if gold_tree is None:
 			mprint("Empty gold tree", out, 'all')
 			mprint(gold_complete_tree.__repr__(), out, 'all')
@@ -112,8 +116,12 @@ if __name__ == '__main__':
 			mprint("() test tree", out, 'all')
 			continue
 		test_complete_tree = pstree.tree_from_text(test_text)
-		treebanks.ptb_cleaning(test_complete_tree)
-		test_tree = treebanks.apply_collins_rules(test_complete_tree, False)
+		tree = treebanks.homogenise_tree(test_complete_tree, False)
+		treebanks.remove_traces(tree)
+		treebanks.remove_function_tags(tree)
+		treebanks.ptb_cleaning(tree)
+		treebanks.remove_trivial_unaries(tree)
+		test_tree = tree
 		if test_tree is None:
 			mprint("Empty test tree", out, 'all')
 			mprint(test_complete_tree.__repr__(), out, 'all')
@@ -126,8 +134,8 @@ if __name__ == '__main__':
 			mprint("Sentence lengths do not match...", out, 'all')
 			mprint("Gold: " + gold_words.__repr__(), out, 'all')
 			mprint("Test: " + test_words.__repr__(), out, 'all')
+			continue
 
-		mprint("After applying collins rules:", out, 'out')
 		mprint(render_tree.text_coloured_errors(test_tree, gold_tree).strip(), out, 'out')
 		match, gold, test, crossing, POS = parse_errors.counts_for_prf(test_tree, gold_tree)
 		stats['out'][0] += match
