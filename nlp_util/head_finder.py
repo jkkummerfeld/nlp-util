@@ -6,6 +6,7 @@ import treebanks
 
 #TODO: Handle other langauges
 
+log = True
 log = False
 
 jkk_mapping_table = {
@@ -188,6 +189,9 @@ tiger_mapping_table = {
   "MPN": ('right', []),
 }
 
+def without_func(label):
+  return treebanks.split_label_type_and_function(label)[0]
+
 def add_head(head_map, tree, head):
   if log: print "Added", tree.span, tree, head
   tree_repr = (tree.span, tree.label)
@@ -201,7 +205,7 @@ def get_head(head_map, tree, amend_for_trace=False):
   tree_repr = (tree.wordspan, treebanks.remove_coindexation(tree, False).label)
   if tree_repr in head_map:
     return head_map[tree_repr]
-  tree_repr = (tree.wordspan, treebanks.split_label_type_and_function(tree.label)[0])
+  tree_repr = (tree.wordspan, without_func(tree.label))
   if tree_repr in head_map:
     return head_map[tree_repr]
   return None
@@ -213,7 +217,7 @@ def get_signature(head_map, tree):
   tree_repr = (tree.wordspan, treebanks.remove_coindexation(tree, False).label)
   if tree_repr in head_map:
     return tree_repr
-  tree_repr = (tree.wordspan, treebanks.split_label_type_and_function(tree.label)[0])
+  tree_repr = (tree.wordspan, without_func(tree.label))
   if tree_repr in head_map:
     return tree_repr
   return None
@@ -223,7 +227,7 @@ def add_if_match(tree, options, head_map, reverse=False):
     if reverse:
       i = len(tree.subtrees) - i - 1
     subtree = tree.subtrees[i]
-    if subtree.label in options:
+    if without_func(subtree.label) in options:
       add_head(head_map, tree, get_head(head_map, subtree))
       return True
   return False
@@ -234,7 +238,7 @@ def collins_NP(tree, head_map):
   first_NP = None
   for i in xrange(len(tree.subtrees)):
     subtree = tree.subtrees[i]
-    if subtree.label not in {'NP', ','}:
+    if without_func(subtree.label) not in {'CCNP', 'NP', ','}:
       all_NP_or_comma = False
     elif subtree.label != ',' and first_NP is None:
       first_NP = subtree
@@ -256,22 +260,25 @@ def collins_NP(tree, head_map):
   if add_if_match(tree, {'JJ', 'JJS', 'RB', 'QP'}, head_map, True):
     return
   # Fallback, no punct
+  backup = None
   for i in xrange(len(tree.subtrees)):
     i = len(tree.subtrees) - i - 1
     subtree = tree.subtrees[i]
     if not subtree.is_punct():
+      backup = subtree
       if not (len(subtree.label) > 2 and subtree.label.startswith('CC')):
         if log: print "Match NP backup"
         add_head(head_map, tree, get_head(head_map, subtree))
         return
+  add_head(head_map, tree, get_head(head_map, backup))
 
 def pennconverter_PP(tree, head_map):
 # ( 'left', [('first non-punctuation after preposition)']),
   prep_seen = False
   for subtree in tree.subtrees:
-    if subtree.label in {'IN', 'TO', 'RP'}:
+    if without_func(subtree.label) in {'IN', 'TO', 'RP'}:
       prep_seen = True
-    elif prep_seen and re.match(non_punct_re, subtree.label) is not None:
+    elif prep_seen and re.match(non_punct_re, without_func(subtree.label)) is not None:
       add_head(head_map, tree, get_head(head_map, subtree))
       return
   add_head(head_map, tree, get_head(head_map, tree.subtrees[0]))
@@ -282,12 +289,12 @@ def pennconverter_is_coord(node):
 
   # If it contains a conjunction other than '[n]either', use that
   for sub in node.subtrees:
-    if sub.label == 'CONJP':
+    if without_func(sub.label) == 'CONJP':
       return True
-    if sub.label == 'CC' and sub.word not in {'either', 'neither'}:
+    if without_func(sub.label) == 'CC' and sub.word not in {'either', 'neither'}:
       return True
 
-  if node.label == 'UCP':
+  if without_func(node.label) == 'UCP':
     return True
 
   commas = False
@@ -295,7 +302,7 @@ def pennconverter_is_coord(node):
     if sub.label in {',', ':'}:
       commas = True
         
-  if node.label in {"NP", "NX", "NML", "NAC"}:
+  if without_func(node.label) in {"NP", "NX", "NML", "NAC"}:
     # Check for appositives
     if not commas:
       return False
@@ -303,8 +310,8 @@ def pennconverter_is_coord(node):
     for sub in node.subtrees:
       if 'TMP' in sub.label or 'LOC' in sub.label:
         return False
-      if sub.label in {"NP', 'NX', 'NML', 'NAC"}:
-        if len(sub.subtrees) != 1 or sub.subtrees[0].label != 'CD':
+      if without_func(sub.label) in {"NP', 'NX', 'NML', 'NAC"}:
+        if len(sub.subtrees) != 1 or without_func(sub.subtrees[0].label) != 'CD':
           np_children += 1
     if np_children > 2:
       return True
@@ -315,19 +322,19 @@ def pennconverter_is_coord(node):
     uniform = True
     for sub in node.subtrees:
       if sub.is_terminal():
-        if (not sub.is_punct()) and (sub.label not in {"RB', 'UH', 'IN', 'CC"}):
+        if (not sub.is_punct()) and (without_func(sub.label) not in {"RB', 'UH', 'IN', 'CC"}):
           terminals = True
       else:
         nonterminals += 1
         if label is None:
-          label = sub.label
+          label = without_func(sub.label)
           if label in {'SINV', 'SQ', 'SBARQ'}:
             label = 'S'
         else:
-          if sub.label in {'SINV', 'SQ', 'SBARQ'}:
+          if without_func(sub.label) in {'SINV', 'SQ', 'SBARQ'}:
             if label != 'S':
               uniform = False
-          elif label != sub.label:
+          elif label != without_func(sub.label):
             uniform = False
         if sub.word_yield(as_list=True)[-1] in {",", ";"}:
           commas = True
@@ -372,9 +379,10 @@ def find_heads(tree, style, head_map=None):
         collins_coord = True
       elif 'jkk' in style and len(tree.subtrees) > 2:
         collins_coord = True
-  if len(tree.subtrees) > 2 and tree.subtrees[0].label == tree.label and tree.subtrees[1].label == 'CC':
+  if len(tree.subtrees) > 2 and without_func(tree.subtrees[0].label) == without_func(tree.label) and tree.subtrees[1].label == 'CC':
     collins_coord = True
   if collins_coord and (style == 'collins' or 'jkk' in style):
+    if log: print "doing coord special case"
     # Options:
     # 0 - First non-punct (collins)
     # 1 - First conjunction
@@ -410,12 +418,14 @@ def find_heads(tree, style, head_map=None):
         if not (subtree.is_conjunction() or subtree.is_punct()):
           add_head(head_map, tree, get_head(head_map, subtree))
           return head_map
+    if log: print "coord special case didn't find a head"
 
   # If the label for this node is not in the table we are either at the bottom,
   # at an NP, or have an error
-  base_label = treebanks.split_label_type_and_function(tree.label)[0]
+  base_label = without_func(tree.label)
   if base_label not in mapping or base_label in ['NP', 'NML']:
     if base_label in ['NP', 'NML']:
+      if log: print "doing collins NP"
       collins_NP(tree, head_map)
     elif base_label in ['PP', 'WHPP']:
       pennconverter_PP(tree, head_map)
@@ -440,13 +450,13 @@ def find_heads(tree, style, head_map=None):
             if log: print "Match add 1a"
             add_head(head_map, tree, get_head(head_map, subtree))
             return head_map
-        elif subtree.label == label:
+        elif without_func(subtree.label) == label:
           if 'aux' not in info[1] or subtree.word not in special_cases['aux']:
             if log: print "Match add 1"
             add_head(head_map, tree, get_head(head_map, subtree))
             return head_map
       else:
-        if re.match(label, subtree.label) is not None:
+        if re.match(label, without_func(subtree.label)) is not None:
           if log: print "Match add 2"
           add_head(head_map, tree, get_head(head_map, subtree))
           return head_map

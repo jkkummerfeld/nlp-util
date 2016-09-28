@@ -165,6 +165,10 @@ if __name__ == '__main__':
       if gold_tree is not None:
         treebanks.remove_trivial_unaries(gold_tree)
 
+    tree.set_unique_id()
+    if gold_tree is not None:
+      gold_tree.set_unique_id()
+
     # Print tree
     words = 0
     for node in tree:

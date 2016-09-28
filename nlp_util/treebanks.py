@@ -282,17 +282,27 @@ def binarise_coordination(parse, method, in_place=True):
                 insert_CC_node(parse, 0, next_conjunct + 1)
                 break
               done = True
-            elif '6' in method:
-              # ((A ,) (B ,) (C and) D)
-              j = i
-              # Consume any interveningg punctuation
-              while j < len(parse.subtrees) and (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct()):
-                j += 1
-              if j < len(parse.subtrees):
-                insert_CC_node(parse, i - 1, j)
-              done = True
-              i = 1
           i += 1
+
+        if '6' in method:
+          i = len(parse.subtrees) - 1
+          while i >= 0:
+            if parse.subtrees[i].is_conjunction() or parse.subtrees[i].is_punct():
+              # ((A ,) (B ,) (C and) D)
+              j = i - 1
+              # Consume any interveningg punctuation
+              while j >= 0 and (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct()):
+                j -= 1
+              # Consume all items until the next punctuation or conjunction
+              while j >= 0 and (not (parse.subtrees[j].is_conjunction() or parse.subtrees[j].is_punct())):
+                j -= 1
+              if j < 0:
+                j = 0
+              if abs(i - j) > 0 and (i != len(parse.subtrees) - 1 or j != 0):
+                insert_CC_node(parse, j, i + 1)
+              i = j
+            i -= 1
+          done = True
 
   if in_place:
     for subtree in parse.subtrees:
@@ -331,7 +341,7 @@ def redirect_gapping(parse):
 
 def follow_chain_in_mapping(mapping, num, trace_group=2):
   if num not in mapping[0]:
-    return None
+    return (None, None)
   ref = mapping[0][num]
   chained = False
   if trace_group == 2:
