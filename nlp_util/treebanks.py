@@ -647,7 +647,15 @@ def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
     line = line.strip()
     if len(line) == 0:
       if len(cur_text) > 0:
-        break
+        # Check for failure cases, with *_0
+        is_fine = True
+        for line in cur_text:
+          if "*_0" in line:
+            is_fine = False
+        if is_fine:
+          break
+        else:
+          return "Empty"
       else:
         continue
     if line[0] == '#':

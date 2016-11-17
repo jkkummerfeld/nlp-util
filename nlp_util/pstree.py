@@ -464,15 +464,18 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
 
   # Link together with structural edges, ensuring proper nesting
   root = None
+  decisions = {}
   for length in xrange(1, len(nodes) + 1):
     for pos in nodes:
       word, POS, spine, structural_edge, trace_edges, node_map = nodes[pos]
       tnum, tlabel = structural_edge
       if abs(pos - tnum) == length:
+        # Identify the top of the spine at this position
         top = None
         for name in node_map:
           if node_map[name].parent is None and name.endswith("_F"):
             top = node_map[name]
+        # Attach it to the target
         if tnum == 0:
           root = PSTree(None, "ROOT", (0, sent_len), None, [top])
           top.parent = root
@@ -481,11 +484,24 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
           target_info = nodes[tnum]
           tlabel += "_F"
           tnode = target_info[5][tlabel]
+          # Check that linking to this node won't cause a crossing
+          for opos in xrange(min(pos, tnum) + 1, max(pos, tnum)):
+              if opos in decisions:
+                  onode = decisions[opos]
+                  # See if this is above our node
+                  pnode = tnode
+                  while pnode is not None:
+                    if pnode == onode:
+                      tnode = onode
+                      break
+                    pnode = pnode.parent
+
           top.parent = tnode
           if left:
             tnode.subtrees.insert(0, top)
           else:
             tnode.subtrees.append(top)
+          decisions[pos] = tnode
 
   # TODO: gather stats on the original trees
   for null, node in nulls_to_add:
