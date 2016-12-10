@@ -128,6 +128,8 @@ def remove_nodes(tree, filter_func, in_place=True, preserve_subtrees=False, init
   if len(subtrees) == 0 and (not tree.is_terminal()):
     return None
   if filter_func(tree) and preserve_subtrees:
+    if len(subtrees) == 0:
+      return None
     return subtrees
   if in_place:
     tree.subtrees = subtrees

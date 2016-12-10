@@ -378,6 +378,7 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
   nodes = {}
   sent_len = 0
   nulls_to_add = []
+  trace_edges = {}
   for line in text:
     # Extract data
     parts = line.strip().split()
@@ -391,7 +392,6 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
     tlabel = parts[5]
     structural_edge = (tnum, tlabel)
 
-    trace_edges = []
     for i in range(6, len(parts), 6):
       tnum = int(parts[i])
       tlabel = parts[i + 1]
@@ -399,8 +399,10 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
       slabel = parts[i + 3]
       slabel += "_T" if parts[i + 4] == 'T' else "_F"
       trace = parts[i + 5]
-      edge = (tnum, tlabel, slabel, trace)
-      trace_edges.append(edge)
+      edge = (tnum, tlabel, num, slabel, trace)
+      if num not in trace_edges:
+        trace_edges[num] = []
+      trace_edges[num].append(edge)
 
     # Make spine
     prev_node = PSTree(word, POS, (num - 1, num))
@@ -408,7 +410,7 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
     node_map = {
       POS +"_0_F": prev_node
     }
-    nodes[num] = (word, POS, spine, structural_edge, trace_edges, node_map)
+    nodes[num] = (word, POS, spine, structural_edge, node_map)
     if spine != '_':
       cur = []
       depth = 0
@@ -467,7 +469,7 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
   decisions = {}
   for length in xrange(1, len(nodes) + 1):
     for pos in nodes:
-      word, POS, spine, structural_edge, trace_edges, node_map = nodes[pos]
+      word, POS, spine, structural_edge, node_map = nodes[pos]
       tnum, tlabel = structural_edge
       if abs(pos - tnum) == length:
         # Identify the top of the spine at this position
@@ -483,7 +485,7 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
           left = tnum > pos
           target_info = nodes[tnum]
           tlabel += "_F"
-          tnode = target_info[5][tlabel]
+          tnode = target_info[4][tlabel]
           # Check that linking to this node won't cause a crossing
           for opos in xrange(min(pos, tnum) + 1, max(pos, tnum)):
               if opos in decisions:
@@ -533,10 +535,14 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
 
   # Add traces
   max_index = 0
-  for num in nodes:
-    for tnum, tlabel, slabel, trace in nodes[num][4]:
-      snode = nodes[num][5][slabel]
-      tnode = nodes[tnum][5][tlabel]
+  for num in trace_edges:
+    for tnum, tlabel, snum, slabel, trace in trace_edges[num]:
+      snode = nodes[snum][4][slabel]
+      tnode = nodes[tnum][4][tlabel]
+      if tlabel.endswith("_T") and slabel.endswith("_T"):
+        tmp = snode
+        snode = tnode
+        tnode = tmp
       identity = get_reference(snode.label)
       if identity is None:
         max_index += 1

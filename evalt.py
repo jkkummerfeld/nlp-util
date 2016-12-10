@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import sys, string
 
-from nlp_util import pstree, nlp_eval, treebanks, parse_errors, init
+from nlp_util import pstree, nlp_eval, treebanks, parse_errors, init, render_tree
 
 options = {
   # 'option_word': ((valid options or type), default, "Long description"),
@@ -45,7 +45,8 @@ options = {
   "homogenise_top_label": [bool, True,
     "Homogenise the top labels, so all are ROOT"],
   "labels_to_remove": [[str],
-    ["TOP", "ROOT", "S1"],
+###    ["TOP", "ROOT", "S1"],
+    ['#', "''", ",", ".", ":", "``"],
     "Remove nodes with the given labels, keep subtrees, but remove"
     "parents that now have a span of size 0"],
   "words_to_remove": [[str], [],
@@ -133,8 +134,8 @@ def mapping_to_items(mapping):
     if node.parent.wordspan[0] == node.parent.wordspan[1]:
       label = node.parent.label.split('-')[0]
     items.append((
-      "empty",
       node.word.split('-')[0],
+      "empty",
       get_nonzero_span(node),
       label
     ))
@@ -240,9 +241,9 @@ while True:
 ###  if options["homogenise_top_label"][1]:
 ###    test_tree = treebanks.homogenise_tree(test_tree)
 ###    gold_tree = treebanks.homogenise_tree(gold_tree)
-###  if len(options['labels_to_remove'][1]) > 0:
-###    treebanks.remove_nodes(test_tree, lambda(n): n.label in options['labels_to_remove'][1], True, True)
-###   treebanks.remove_nodes(gold_tree, lambda(n): n.label in options['labels_to_remove'][1], True, True)
+  if len(options['labels_to_remove'][1]) > 0:
+    treebanks.remove_nodes(test_tree, lambda(n): n.label in options['labels_to_remove'][1], True, True)
+    treebanks.remove_nodes(gold_tree, lambda(n): n.label in options['labels_to_remove'][1], True, True)
 ###  if len(options['words_to_remove'][1]) > 0:
 ###    treebanks.remove_nodes(test_tree, lambda(n): n.word in options['words_to_remove'][1], True, True)
 ###    treebanks.remove_nodes(gold_tree, lambda(n): n.word in options['words_to_remove'][1], True, True)
@@ -262,14 +263,19 @@ while True:
 ###    treebanks.remove_trivial_unaries(test_tree)
 ###    treebanks.remove_trivial_unaries(gold_tree)
 
+  gold_tree.calculate_spans()
+  test_tree.calculate_spans()
+
   # Score and report
-  print("Gold", gold_tree)
+  print("Gold", render_tree.text_tree(gold_tree, False, True))
   gold_traces = get_traces(gold_tree)
   gold_items = mapping_to_items(gold_traces)
 
-  print("Test", test_tree)
+  print("Test", render_tree.text_tree(test_tree, False, True))
   test_traces = get_traces(test_tree)
   test_items = mapping_to_items(test_traces)
+
+###  print("Comparison:", render_tree.text_coloured_errors(test_tree, gold_tree))
 
   match = 0
   for item in gold_items:
@@ -294,6 +300,9 @@ while True:
   print(match, len(test_items), len(gold_items))
 
 done = set()
+total_match = 0
+total_gold = 0
+total_test = 0
 for sym in match_by_type:
   done.add(sym)
   match = match_by_type[sym]
@@ -303,7 +312,10 @@ for sym in match_by_type:
     gold = gold_by_type[sym]
   if sym in test_by_type:
     test = test_by_type[sym]
-  print(sym, match, gold, test)
+  print(sym, match, gold, test, 100.0 * match / test, 100.0 * match / gold)
+  total_match += match
+  total_gold += gold
+  total_test += test
 for sym in gold_by_type:
   if sym not in done:
     done.add(sym)
@@ -312,11 +324,23 @@ for sym in gold_by_type:
     gold = gold_by_type[sym]
     if sym in test_by_type:
       test = test_by_type[sym]
-    print(sym, match, gold, test)
+    print(sym, match, gold, test, 0.0, 0.0)
+    total_match += match
+    total_gold += gold
+    total_test += test
 for sym in test_by_type:
   if sym not in done:
     done.add(sym)
     match = 0
     gold = 0
     test = test_by_type[sym]
-    print(sym, match, gold, test)
+    print(sym, match, gold, test, 0.0, 0.0)
+    total_match += match
+    total_gold += gold
+    total_test += test
+
+print(total_match, total_gold, total_test)
+if total_gold > 0:
+    print("Recall: ", total_match * 100.0 / total_gold)
+if total_test > 0:
+    print("Precision: ", total_match * 100.0 / total_test)
