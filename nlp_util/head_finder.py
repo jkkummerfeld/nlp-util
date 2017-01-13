@@ -381,7 +381,13 @@ def find_heads(tree, style, head_map=None):
         collins_coord = True
   if len(tree.subtrees) > 2 and without_func(tree.subtrees[0].label) == without_func(tree.label) and tree.subtrees[1].label == 'CC':
     collins_coord = True
-  if collins_coord and (style == 'collins' or 'jkk' in style):
+  flat_NP = False
+  if tree.label == "NP":
+    flat_NP = True
+    for subtree in tree.subtrees:
+      if len(subtree.subtrees) != 0:
+        flat_NP = False
+  if (not flat_NP) and collins_coord and (style == 'collins' or 'jkk' in style):
     if log: print "doing coord special case"
     # Options:
     # 0 - First non-punct (collins)

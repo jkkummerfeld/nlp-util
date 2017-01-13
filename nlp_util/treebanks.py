@@ -321,43 +321,44 @@ def redirect_gapping(parse):
 
   for num in traces[1]:
     # Change the goal
-    target, over_null = traces[0][num]
-    if num not in traces[2]:
-      target.label = ''.join(target.label.split('-{}'.format(num)))
+    if num in traces[0]:
+      target, over_null = traces[0][num]
+      if num not in traces[2]:
+        target.label = ''.join(target.label.split('-{}'.format(num)))
 
-    ntarget = target.parent
-    new_num = get_reference(ntarget.label)
-    if new_num is None:
-      if num in traces[2]:
-        new_num = next_num
-        next_num += 1
-      else:
-        new_num = num
-      ntarget.label += "-{}".format(new_num)
+      ntarget = target.parent
+      new_num = get_reference(ntarget.label)
+      if new_num is None:
+        if num in traces[2]:
+          new_num = next_num
+          next_num += 1
+        else:
+          new_num = num
+        ntarget.label += "-{}".format(new_num)
 
-    if new_num != num:
-      for node in traces[1][num]:
-        # Change all to point to new location
-        core = ''.join(node.label.split('={}'.format(num)))
-        node.label = core + "={}".format(new_num)
+      if new_num != num:
+        for node in traces[1][num]:
+          # Change all to point to new location
+          core = ''.join(node.label.split('={}'.format(num)))
+          node.label = core + "={}".format(new_num)
 
 def follow_chain_in_mapping(mapping, num, trace_group=2):
   if num not in mapping[0]:
     return (None, None)
   ref = mapping[0][num]
   chained = False
-  if trace_group == 2:
-    while ref[1]:
-      ref_num = None
-      for child in ref[0].subtrees:
-        if child.label == TRACE_LABEL:
-          ref_num = get_reference(child.word)
-          if ref_num is not None:
-            break
-      if ref_num is None or ref_num not in mapping[0]:
-        break
-      ref = mapping[0][ref_num]
-      chained = True
+###  if trace_group == 2:
+###    while ref[1]:
+###      ref_num = None
+###      for child in ref[0].subtrees:
+###        if child.label == TRACE_LABEL:
+###          ref_num = get_reference(child.word)
+###          if ref_num is not None:
+###            break
+###      if ref_num is None or ref_num not in mapping[0]:
+###        break
+###      ref = mapping[0][ref_num]
+###      chained = True
   return (chained, ref[0])
 
 def resolve_traces(node, mapping=None):
@@ -466,16 +467,18 @@ def remove_function_tags(tree, in_place=True):
   label = tree.label
   if len(label) > 0 and label[0] != '-':
     num = None
-    if label[-1] in string.digits:
-      if '=' in label:
-        num = "=" + label.split('=')[-1]
-      else:
-        num = '-' + label.split('-')[-1]
-    symbol = label.split('-')[0].split('=')[0]
-    if num is None:
-      label = symbol
-    else:
-      label = symbol + num
+    to_add = []
+    cur = []
+    cur_all_digits = False
+    for i in range(len(label) -1, -1, -1):
+        cur.insert(0, label[i])
+        if label[i] not in string.digits:
+            cur_all_digits = False
+        elif label[i] in '-=' and len(cur) > 0:
+            to_add.insert(0, ''.join(cur))
+            cur_all_digits = True
+            cur = []
+    label = ''.join(cur) + ''.join(to_add)
 
   if in_place:
     for subtree in tree.subtrees:

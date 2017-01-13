@@ -608,7 +608,7 @@ def shg_format(parse, head_rules, reverse_null_null=False):
   graph_type += ' tree' if check_tree(edges) else ' graph'
   graph_type += ' has-cycle' if check_cyclic(edges) else ' no-cycle'
   graph_type += ' has-cycle-rev-edges' if check_cyclic(edges, False, True) else ' no-cycle-rev-edges'
-  graph_type += ' has-cycle1' if check_self_cycle(edges) else ' no-cycle1'
+  graph_type += ' has-len1-cycle' if check_self_cycle(edges) else ' no-len1-cycle'
   graph_type += ' has-double' if check_double_edge(edges) else ' no-double'
   ans.append(graph_type)
 

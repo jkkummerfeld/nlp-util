@@ -31,13 +31,13 @@ options = {
     "Include POS tags in overall score"],
   "include_unparsed_in_score": [bool, True,
     "Include missed sentences in overall score"],
-  "summary_cutoffs": [[int], [40], # TODO
-    "Cutoff lengths for summaries"],
   "averaging": [('macro', 'micro'), 'macro', # TODO
     "How to calculate the overall scores, with a macro average (score for sums"
     "of counts) or micro average (average of scores for each count)"],
+  "null-only": [bool, "--nulls" in sys.argv,
+    "Whether to only score the null itself"],
   # Tree modification
-  "remove_trivial_unaries": [bool, True,
+  "remove_trivial_unaries": [bool, False,
     "Remove unaries that go from a label to iself,"
     "e.g. (NP (NP (NNP it))) has one"],
   "remove_function_labels": [bool, True,
@@ -58,14 +58,19 @@ options = {
 }
 
 def get_reference(text, sep='-'):
+  parts = []
+  cur = []
+  for i in range(len(text) -1, -1, -1):
+      cur.insert(0, text[i])
+      if text[i] in '-=' and len(cur) > 0:
+          parts.append(''.join(cur))
+          cur = []
   if text == '0':
     return None
-  for char in text.split(sep)[-1]:
-    if char not in string.digits:
-      return None
-  if len(text.split(sep)[-1]) == 0:
-    return None
-  return text.split(sep)[-1]
+  for part in parts:
+    if len(part) > 0 and part[0] == sep:
+      return part[1:]
+  return None
 
 def get_traces(node, mapping=None):
   if mapping is None:
@@ -83,7 +88,7 @@ def get_traces(node, mapping=None):
   plabel = node.label
 
   # 0 - num from [NP]-num mapping to the parse node
-  if '-' in plabel and '=' not in plabel and get_reference(plabel) is not None:
+  if '-' in plabel and get_reference(plabel) is not None:
     num = get_reference(plabel)
     over_null = False
     if node.wordspan[0] == node.wordspan[1]:
@@ -128,47 +133,57 @@ def mapping_to_items(mapping):
 
   items = []
 
+  #TODO: Don't rely on provided position, get the left end of the next non-null
+
   # Add items without coindexation
   for node in mapping[3]:
     label = ""
     if node.parent.wordspan[0] == node.parent.wordspan[1]:
       label = node.parent.label.split('-')[0]
     items.append((
-      node.word.split('-')[0],
-      "empty",
-      get_nonzero_span(node),
-      label
+      'no-link_'+ node.word.split('-')[0] +"_"+ label,
+      get_nonzero_span(node)[0]
     ))
 
   # Add items with gapping
-  for num in mapping[1]:
-    ref = mapping[0][num][0]
-    for node in mapping[1][num]:
-      items.append((
-        "gap",
-        get_nonzero_span(node),
-        node.label.split('=')[0],
-        get_nonzero_span(ref),
-        ref.label.split('-')[0]
-      ))
+  if not options['null-only'][1]:
+    for num in mapping[1]:
+      ref = mapping[0][num][0]
+      for node in mapping[1][num]:
+        items.append((
+          "gap",
+          get_nonzero_span(node),
+          node.label.split('=')[0],
+          get_nonzero_span(ref),
+          ref.label.split('-')[0]
+        ))
 
   # Add items with coindexation
   for num in mapping[2]:
     for node in mapping[2][num]:
       ref = mapping[0][num]
-      while ref[1]:
-        child = ref[0].subtrees[0]
-        ref_num = get_reference(child.word)
-        if ref_num is None:
-          break
-        ref = mapping[0][ref_num]
+###      while ref[1]:
+###        child = ref[0].subtrees[0]
+###        ref_num = get_reference(child.word)
+###        if ref_num is None:
+###          break
+###        ref = mapping[0][ref_num]
       ref = ref[0]
-      items.append((
-        node.word.split('-')[0],
-        get_nonzero_span(node),
-        ref.label.split('-')[0],
-        get_nonzero_span(ref)
-      ))
+
+      if options['null-only'][1]:
+        label = ""
+        if node.parent.wordspan[0] == node.parent.wordspan[1]:
+          label = node.parent.label.split('-')[0]
+        items.append((
+          'no-link_'+ node.word.split('-')[0] +"_"+ label,
+          get_nonzero_span(node)[0]
+        ))
+      else:
+        items.append((
+          node.word.split('-')[0] +"_"+ ref.label.split('-')[0] +"_"+ node.parent.label.split("-")[0],
+          get_nonzero_span(node)[0],
+          get_nonzero_span(ref)
+        ))
 
   return items
 
@@ -181,16 +196,8 @@ init.header(sys.argv, out)
 # Handle options
 test_in = None
 gold_in = None
-if len(sys.argv) == 1:
-  sys.exit()
-elif len(sys.argv) == 2:
-  sys.exit()
-elif len(sys.argv) == 3:
-  # Run with defaults, assume the two arguments are the gold and test files
-  options['gold'][1] = sys.argv[1]
-  options['test'][1] = sys.argv[2]
-else:
-  sys.exit()
+options['gold'][1] = sys.argv[1]
+options['test'][1] = sys.argv[2]
 
 # Print list of options in use
 for option in options:
@@ -249,13 +256,13 @@ while True:
 ###    treebanks.remove_nodes(gold_tree, lambda(n): n.word in options['words_to_remove'][1], True, True)
   if len(options['equivalent_labels'][1]) > 0:
     for tree in [gold_tree, test_tree]:
-      for node in gold_tree:
+      for node in tree:
         for pair in options['equivalent_labels'][1]:
           if node.label in pair:
             node.label = pair[0]
   if len(options['equivalent_words'][1]) > 0:
     for tree in [gold_tree, test_tree]:
-      for node in gold_tree:
+      for node in tree:
         for pair in options['equivalent_words'][1]:
           if node.word in pair:
             node.word = pair[0]
@@ -266,22 +273,27 @@ while True:
   gold_tree.calculate_spans()
   test_tree.calculate_spans()
 
+  print("Gold", gold_tree)
+  print("Test", test_tree)
+
   # Score and report
-  print("Gold", render_tree.text_tree(gold_tree, False, True))
   gold_traces = get_traces(gold_tree)
   gold_items = mapping_to_items(gold_traces)
 
-  print("Test", render_tree.text_tree(test_tree, False, True))
   test_traces = get_traces(test_tree)
+  print(test_traces)
   test_items = mapping_to_items(test_traces)
 
 ###  print("Comparison:", render_tree.text_coloured_errors(test_tree, gold_tree))
 
   match = 0
+  to_print = []
+  has_items = (len(gold_items) + len(test_items) ) > 0
+  all_match = True
   for item in gold_items:
     if item in test_items:
       match += 1
-      print("  Match", item)
+      to_print.append("  Match "+ str(item))
       if item[0] not in match_by_type:
         match_by_type[item[0]] = 0
       match_by_type[item[0]] += 1
@@ -290,19 +302,30 @@ while True:
       gold_by_type[item[0]] = 0
     gold_by_type[item[0]] += 1
     if item not in test_items:
-      print("  Missing gold", item)
+      to_print.append("  Missing gold " + str(item))
+      all_match = False
   for item in test_items:
     if item[0] not in test_by_type:
       test_by_type[item[0]] = 0
     test_by_type[item[0]] += 1
     if item not in gold_items:
-      print("  Extra test", item)
+      to_print.append("  Extra test "+ str(item))
+      all_match = False
+###  if not all_match:
+  if has_items:
+    print("Gold", render_tree.text_tree(gold_tree, False, True))
+    print("Test", render_tree.text_tree(test_tree, False, True))
+  else:
+    print("Gold", gold_tree)
+    print("Test", test_tree)
+  print("\n".join(to_print))
   print(match, len(test_items), len(gold_items))
 
 done = set()
 total_match = 0
 total_gold = 0
 total_test = 0
+to_print = []
 for sym in match_by_type:
   done.add(sym)
   match = match_by_type[sym]
@@ -312,35 +335,33 @@ for sym in match_by_type:
     gold = gold_by_type[sym]
   if sym in test_by_type:
     test = test_by_type[sym]
-  print(sym, match, gold, test, 100.0 * match / test, 100.0 * match / gold)
+  to_print.append((gold, sym, match, gold, test, 100.0 * match / test, 100.0 * match / gold))
   total_match += match
   total_gold += gold
   total_test += test
 for sym in gold_by_type:
   if sym not in done:
     done.add(sym)
-    match = 0
-    test = 0
     gold = gold_by_type[sym]
+    test = 0
     if sym in test_by_type:
       test = test_by_type[sym]
-    print(sym, match, gold, test, 0.0, 0.0)
-    total_match += match
+    to_print.append((gold, sym, 0, gold, test, 0.0, 0.0))
     total_gold += gold
     total_test += test
 for sym in test_by_type:
   if sym not in done:
     done.add(sym)
-    match = 0
-    gold = 0
-    test = test_by_type[sym]
-    print(sym, match, gold, test, 0.0, 0.0)
-    total_match += match
-    total_gold += gold
-    total_test += test
+    if sym != "empty*T*":
+      test = test_by_type[sym]
+      to_print.append((0, sym, 0, 0, test, 0.0, 0.0))
+      total_test += test
 
-print(total_match, total_gold, total_test)
-if total_gold > 0:
-    print("Recall: ", total_match * 100.0 / total_gold)
-if total_test > 0:
-    print("Precision: ", total_match * 100.0 / total_test)
+to_print.append((total_gold, "all", total_match, total_gold, total_test, total_match * 100.0 / total_test, total_match * 100.0 / total_gold))
+
+to_print.sort()
+for gold, sym, match, gold, test, precision, recall in to_print:
+  f = 0
+  if precision + recall > 0:
+      f = 2 * precision * recall / (precision + recall)
+  print(sym, match, gold, test, precision, recall, f)

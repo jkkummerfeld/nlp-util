@@ -399,6 +399,8 @@ def tree_from_shp(text, allow_empty_labels=False, allow_empty_words=False):
       slabel = parts[i + 3]
       slabel += "_T" if parts[i + 4] == 'T' else "_F"
       trace = parts[i + 5]
+      if trace.endswith("_chain"):
+        trace = trace[:-6]
       edge = (tnum, tlabel, num, slabel, trace)
       if num not in trace_edges:
         trace_edges[num] = []
