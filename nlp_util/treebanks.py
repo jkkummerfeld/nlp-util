@@ -472,12 +472,13 @@ def remove_function_tags(tree, in_place=True):
     cur_all_digits = False
     for i in range(len(label) -1, -1, -1):
         cur.insert(0, label[i])
-        if label[i] not in string.digits:
-            cur_all_digits = False
-        elif label[i] in '-=' and len(cur) > 0:
-            to_add.insert(0, ''.join(cur))
+        if label[i] in '-=' and len(cur) > 0:
+            if cur_all_digits:
+                to_add.insert(0, ''.join(cur))
             cur_all_digits = True
             cur = []
+        elif label[i] not in string.digits:
+            cur_all_digits = False
     label = ''.join(cur) + ''.join(to_add)
 
   if in_place:
@@ -620,6 +621,7 @@ def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
   
   >>> from StringIO import StringIO
   >>> file_text = """# Parse  (ROOT
+  ... # Parse (ROOT
   ... # Parse   (S
   ... # Parse     (NP-SBJ-1 (DT A) (NN record) (NN date) )
   ... # Parse     (VP (VBZ has) (RB n't)
@@ -627,19 +629,21 @@ def shp_read_tree(source, return_empty=False, allow_empty_labels=False, allow_em
   ... # Parse         (VP (VBN set)
   ... # Parse           (NP (-NONE- *-1) ))))
   ... # Parse     (. .) ))
-  ... # Sentence A record date has n't been set .
-  ... # Tokens 1 A  2 record  3 date  4 has  5 n't  6 been  7 set  8 .
-  ... # Identity 1 (0, 3) NP-SBJ-1 False
-  ... # Reference 1 (7, 7) *-1
-  ... # Graph type:  proj graph no-cycle no-cycle-alt no-cycle1 has-double
+  ... # SentID 8
+  ... # Sentence   A record date has n't been set .
+  ... # Tokens     1 A  2 record  3 date  4 has  5 n't  6 been  7 set  8 .
+  ... # Identity   1 (0, 3) NP-1 False
+  ... # Reference  1 (7, 7) *-1
+  ... # Graph type  proj graph no-cycle no-cycle-rev-edges no-len1-cycle has-double
   ... 1 A      DT  _                   3 NP-SBJ_0
   ... 2 record NN  _                   3 NP-SBJ_0
-  ... 3 date   NN  NP-SBJ              7 S_0      7 NP_0 NP-SBJ_0 F *
+  ... 3 date   NN  NP-SBJ              7 S_0    7 NP_0 T NP-SBJ_0 F *
   ... 4 has    VBZ _                   7 VP_2
   ... 5 n't    RB  _                   7 VP_2
   ... 6 been   VBN _                   7 VP_1
   ... 7 set    VBN (NP_(*))_VP_VP_VP_S 0 ROOT_0
   ... 8 .      .   _                   7 S_0
+  ... 
   ... """
   >>> in_file = StringIO(file_text)
   >>> shp_read_tree(in_file)
