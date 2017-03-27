@@ -469,7 +469,7 @@ def remove_function_tags(tree, in_place=True):
     num = None
     to_add = []
     cur = []
-    cur_all_digits = False
+    cur_all_digits = True
     for i in range(len(label) -1, -1, -1):
         cur.insert(0, label[i])
         if label[i] in '-=' and len(cur) > 0:
